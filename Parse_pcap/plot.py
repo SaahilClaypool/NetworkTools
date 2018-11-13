@@ -8,11 +8,12 @@ import matplotlib.pyplot as plt
 
 
 def main():
-    if (len(sys.argv) < 3):
+    if (len(sys.argv) < 4):
         print("enter more args")
         exit(1)
     dirname = sys.argv[1]
     r_pattern = re.compile(".*{}.*csv".format(sys.argv[2]))
+    name = sys.argv[3]
     print(r_pattern)
     files = []
     for f in listdir(dirname):
@@ -23,8 +24,8 @@ def main():
     
     plt.ylabel("throughput (mbps)")
     plt.xlabel("time (s)")
-    plt.savefig("fig.png")
-    if (len(sys.argv) >= 3):
+    plt.savefig(name)
+    if (len(sys.argv) >= 4):
         plt.show()
 
 def plot_one(filename):

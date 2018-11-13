@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut files: Vec<String> = vec![];
     let mut reg_string = String::from(".*pcap");
     let mut dir: String = String::from(".");
-    let mut output: String;
+    let mut output: String = String::from("");
     let mut granularity: i64 = 500;
 
     if env::args().len() < 3 {

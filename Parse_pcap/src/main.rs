@@ -9,7 +9,7 @@ extern crate rayon;
 
 use std::env;
 use std::error::Error;
-use std::collections::HashMap;
+use std::collections::{HashMap};
 
 use linux_api::time::timeval;
 
@@ -32,10 +32,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut dir: String = String::from(".");
     let mut output: String;
     let mut granularity: i64 = 500;
-    let mut time_step: i64 = 500;
 
     if env::args().len() < 3 {
-        eprintln!("Args: <pcap_regex> <directory> [output_dir] [granularity] [time_step_size]");
+        eprintln!("Args: <pcap_regex> <directory> [output_dir] [granularity] ");
         return Result::Err(string_error::new_err("not enough args"));
     }
     else {
@@ -45,7 +44,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                 2 => dir = arg,
                 3 => output = arg,
                 4 => granularity = arg.parse::<i64>()?,
-                5 => time_step = arg.parse::<i64>()?,
                 _ => eprintln!("arg {} is {}", i, arg),
             }
         }
@@ -57,31 +55,25 @@ fn main() -> Result<(), Box<dyn Error>> {
         let stem = Path::new(&file).file_stem().unwrap().to_str().unwrap();
         eprintln!("shortpath: {}", stem);
         let mut cap = open_capture(&file).unwrap();
-        let mut flow_map = parse_capture(&mut cap).unwrap();
 
-        let parsed_flows: Vec<(u16, Vec<Throughput>)> = flow_map.iter_mut().filter_map(|(port, packets)| {
-            packets.sort_by(|a, b| a.time.cmp(&b.time));
-            let tps = calculate_throughput(&packets, granularity, time_step);
+        let tps = calculate_throughput(&mut cap, granularity);
 
-            let non_zero_throughput : Vec<&Throughput> = tps.iter().filter(|tp| {
+        let vec_tps: Vec<(u16, Vec<Throughput>)> = tps.into_iter().filter_map(|(port, tp)| {
+            let non_zero_throughput : Vec<&Throughput> = tp.iter().filter(|tp| {
                 tp.value > 200
             }).collect();
 
-            if non_zero_throughput.len() > 100 {
-                Some((*port, tps))
-            } else {
+            if non_zero_throughput.len() > 1 {
+                eprintln!("non zero flow {}", port);
+                Some((port, tp))
+            }
+            else {
+                eprintln!("zero flow {} {}", port, non_zero_throughput.len());
                 None
             }
         }).collect();
 
-        let mut min_start_time = std::i64::MAX;
-        for (_, flow) in &parsed_flows {
-            if flow[0].time < min_start_time {
-                min_start_time = flow[0].time;
-            }
-        }
-
-        (String::from(stem), min_start_time, parsed_flows)
+        (String::from(stem), 0, vec_tps)
     }).collect();
 
     let mut min_start_time = std::i64::MAX;
@@ -144,9 +136,9 @@ fn packet_len(pkt: &Pkts) -> u32 {
     // - 4 * pkt.tcp_p.get_data_offset() as u32
 }
 
-fn calculate_throughput_between(start: usize, end: usize, pkts: &[Pkts]) -> u32 {
+fn calculate_throughput_between(pkts: &[Pkts]) -> u32 {
     let mut data_size = 0;
-    for idx in start..=end {
+    for idx in 0..pkts.len() {
         let p = &pkts[idx];
         let Pkts {
             time,
@@ -164,42 +156,52 @@ fn calculate_throughput_between(start: usize, end: usize, pkts: &[Pkts]) -> u32 
 }
 
 /// Takes sorted list of Pkts
-fn calculate_throughput(pkts: &[Pkts], granularity: i64, step_size: i64) -> Vec<Throughput> {
-    let mut res: Vec<Throughput> = vec![];
-    let mut t_bottom = pkts[0].time - granularity;
-    let mut t_top = pkts[0].time;
-    let mut bottom = 0;
-    let mut top = 1;
-    'outer: while top < pkts.len() - 1 {
-        for idx in top..=pkts.len() {
-            // search for first packet past the window
-            if idx == pkts.len() {
-                top = idx;
-                break 'outer;
-            }
-            if pkts[idx].time > t_top {
-                top = idx;
-                break;
-            }
+fn calculate_throughput(cap: &mut Capture<Offline>, granularity: i64) -> HashMap<u16, Vec<Throughput>> {
+    let mut intermediate_flows: HashMap<u16, Vec<Pkts>> = HashMap::new();
+    let mut intermediate_t_top: HashMap<u16, i64> = HashMap::new();
+    // result
+    let mut flows_throughput: HashMap<u16, Vec<Throughput>> = HashMap::new();
+
+    while let Ok(p) = cap.next() {
+        let d: Vec<u8> = p.data.iter().cloned().collect();
+        let tv = timeval {
+            tv_sec: p.header.ts.tv_sec,
+            tv_usec: p.header.ts.tv_usec
+        };
+
+        let pkt = parse(d, tv.to_milliseconds());
+        let src_port = pkt.tcp_p.get_source() as u16;
+        // start flow parsing if the flow hasn't been seen
+        if !intermediate_flows.contains_key(&src_port) {
+            intermediate_flows.insert(src_port, Vec::with_capacity(1000));
+            intermediate_t_top.insert(src_port, pkt.time + granularity);
+            flows_throughput.insert(src_port, Vec::with_capacity(1000));
         }
-        for idx in bottom..pkts.len() {
-            // search for first packet past the window
-            if pkts[idx].time >= t_bottom {
-                bottom = idx;
-                break;
-            }
+        let t_top = *(intermediate_t_top.get(&src_port).unwrap());
+
+        if pkt.time > t_top {
+            // calculate the throughput for the intermediate window
+            let window = intermediate_flows.get(&src_port).unwrap();
+            let throughput =
+            (calculate_throughput_between(window) as i64) as f64 / (granularity as f64 / 1000.);
+
+            let tp = Throughput {
+                    time: t_top, 
+                    value: throughput as i64
+                    };
+
+            intermediate_t_top.remove(&src_port);
+            intermediate_t_top.insert(src_port, t_top + granularity);
+
+            intermediate_flows.remove(&src_port);
+            intermediate_flows.insert(src_port, Vec::with_capacity(1000));
+
+            flows_throughput.get_mut(&src_port).unwrap().push(tp);
         }
 
-        let throughput =
-            (calculate_throughput_between(bottom, top, pkts) as i64) as f64 / (granularity as f64 / 1000.);
-        res.push(Throughput {
-            time: t_top,
-            value: throughput as i64,
-        });
-        t_top += step_size;
-        t_bottom += step_size;
+        intermediate_flows.get_mut(&src_port).unwrap().push(pkt);
     }
-    res
+    flows_throughput
 }
 
 #[derive(Debug)]
@@ -222,24 +224,6 @@ fn parse<'a>(pkt: Vec<u8>, time: i64) -> Pkts<'a> {
         ip_p: ip_p,
         tcp_p: tcp_p,
     }
-}
-
-fn parse_capture<'a>(cap: &mut Capture<Offline>) -> Result<HashMap<u16, Vec<Pkts<'a>>>, Box<dyn Error>> {
-    let mut flows: HashMap<u16, Vec<Pkts>> = HashMap::new();
-    while let Ok(p) = cap.next() {
-        let d: Vec<u8> = p.data.iter().cloned().collect();
-        let tv = timeval {
-            tv_sec: p.header.ts.tv_sec,
-            tv_usec: p.header.ts.tv_usec,
-        };
-        let pkt = parse(d, tv.to_milliseconds());
-        let src_port = pkt.tcp_p.get_source() as u16;
-        if !flows.contains_key(&src_port) {
-            flows.insert(src_port, vec![]);
-        }
-        flows.get_mut(&src_port).unwrap().push(pkt);
-    }
-    return Ok(flows);
 }
 
 fn open_capture(st: &str) -> Result<Capture<Offline>, Box<dyn Error>> {

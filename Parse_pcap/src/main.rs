@@ -56,8 +56,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let parsed_pcaps: Vec<(String, i64, Vec<(u16, Vec<Throughput>)>)> = files.par_iter().map(|file| {
         let stem = Path::new(&file).file_stem().unwrap().to_str().unwrap();
         eprintln!("shortpath: {}", stem);
-        let cap = open_capture(&file).unwrap();
-        let mut flow_map = parse_capture(cap).unwrap();
+        let mut cap = open_capture(&file).unwrap();
+        let mut flow_map = parse_capture(&mut cap).unwrap();
 
         let parsed_flows: Vec<(u16, Vec<Throughput>)> = flow_map.iter_mut().filter_map(|(port, packets)| {
             packets.sort_by(|a, b| a.time.cmp(&b.time));
@@ -203,15 +203,15 @@ fn calculate_throughput(pkts: &[Pkts], granularity: i64, step_size: i64) -> Vec<
 }
 
 #[derive(Debug)]
-struct Pkts {
+struct Pkts<'a> {
     /// millisecond time
     time: i64,
-    eth_p: ethernet::EthernetPacket<'static>,
-    ip_p: ipv4::Ipv4Packet<'static>,
-    tcp_p: tcp::TcpPacket<'static>,
+    eth_p: ethernet::EthernetPacket<'a>,
+    ip_p: ipv4::Ipv4Packet<'a>,
+    tcp_p: tcp::TcpPacket<'a>,
 }
 
-fn parse(pkt: Vec<u8>, time: i64) -> Pkts {
+fn parse<'a>(pkt: Vec<u8>, time: i64) -> Pkts<'a> {
     let eth_p = ethernet::EthernetPacket::owned(pkt).unwrap();
     let ip_p = ipv4::Ipv4Packet::owned(Vec::from(eth_p.from_packet().payload)).unwrap();
     let tcp_p = tcp::TcpPacket::owned(Vec::from(ip_p.from_packet().payload)).unwrap();
@@ -224,7 +224,7 @@ fn parse(pkt: Vec<u8>, time: i64) -> Pkts {
     }
 }
 
-fn parse_capture(mut cap: Capture<Offline>) -> Result<HashMap<u16, Vec<Pkts>>, Box<dyn Error>> {
+fn parse_capture<'a>(cap: &mut Capture<Offline>) -> Result<HashMap<u16, Vec<Pkts<'a>>>, Box<dyn Error>> {
     let mut flows: HashMap<u16, Vec<Pkts>> = HashMap::new();
     while let Ok(p) = cap.next() {
         let d: Vec<u8> = p.data.iter().cloned().collect();

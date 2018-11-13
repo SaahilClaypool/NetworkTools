@@ -24,7 +24,8 @@ def main():
     plt.ylabel("throughput (mbps)")
     plt.xlabel("time (s)")
     plt.savefig("fig.png")
-    # plt.show()
+    if (len(sys.argv) >= 3):
+        plt.show()
 
 def plot_one(filename):
     x = []

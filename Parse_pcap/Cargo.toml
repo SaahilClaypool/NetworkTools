@@ -1,0 +1,15 @@
+[package]
+name = "parse_pcap"
+version = "0.1.0"
+authors = ["saahilclaypool <saahil@claypools.org>"]
+edition = "2018"
+
+[dependencies]
+pcap="0.7.0"
+pnet="0.21.0"
+pnet_packet="0.21.0"
+string-error="0.1.0"
+regex="1"
+lazy_static="1"
+linux-api="*"
+rayon="1"

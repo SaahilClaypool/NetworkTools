@@ -57,23 +57,24 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut cap = open_capture(&file).unwrap();
 
         let tps = calculate_throughput(&mut cap, granularity);
-
+        let mut start_time = std::i64::MAX;
         let vec_tps: Vec<(u16, Vec<Throughput>)> = tps.into_iter().filter_map(|(port, tp)| {
             let non_zero_throughput : Vec<&Throughput> = tp.iter().filter(|tp| {
                 tp.value > 200
             }).collect();
 
             if non_zero_throughput.len() > 1 {
-                eprintln!("non zero flow {}", port);
+                if tp[0].time < start_time {
+                    start_time = tp[0].time;
+                }
                 Some((port, tp))
             }
             else {
-                eprintln!("zero flow {} {}", port, non_zero_throughput.len());
                 None
             }
         }).collect();
 
-        (String::from(stem), 0, vec_tps)
+        (String::from(stem), start_time, vec_tps)
     }).collect();
 
     let mut min_start_time = std::i64::MAX;
@@ -136,8 +137,8 @@ fn packet_len(pkt: &Pkts) -> u32 {
     // - 4 * pkt.tcp_p.get_data_offset() as u32
 }
 
-fn calculate_throughput_between(pkts: &[Pkts]) -> u32 {
-    let mut data_size = 0;
+fn calculate_throughput_between(pkts: &[Pkts]) -> i64 {
+    let mut data_size: i64 = 0;
     for idx in 0..pkts.len() {
         let p = &pkts[idx];
         let Pkts {
@@ -149,7 +150,7 @@ fn calculate_throughput_between(pkts: &[Pkts]) -> u32 {
 
         let dst: String = ip_p.get_destination().to_string();
         if SENDER_DST.is_match(&dst) {
-            data_size += packet_len(p);
+            data_size += packet_len(p) as i64;
         }
     }
     data_size
@@ -183,7 +184,7 @@ fn calculate_throughput(cap: &mut Capture<Offline>, granularity: i64) -> HashMap
             // calculate the throughput for the intermediate window
             let window = intermediate_flows.get(&src_port).unwrap();
             let throughput =
-            (calculate_throughput_between(window) as i64) as f64 / (granularity as f64 / 1000.);
+            (calculate_throughput_between(window) as i64) as f64 / (granularity as f64 / 1000.) * 8.;
 
             let tp = Throughput {
                     time: t_top, 

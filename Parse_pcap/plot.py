@@ -24,6 +24,8 @@ def main():
     
     plt.ylabel("throughput (mbps)")
     plt.xlabel("time (s)")
+    plt.title(name)
+    plt.ylim(ymin=0)
     plt.savefig(name)
     if (len(sys.argv) >= 4):
         plt.show()

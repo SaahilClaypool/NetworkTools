@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 tp.value > 200
             }).collect();
 
-            if non_zero_throughput.len() > 1 {
+            if non_zero_throughput.len() > 100 {
                 if tp[0].time < start_time {
                     start_time = tp[0].time;
                 }

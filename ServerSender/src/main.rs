@@ -4,7 +4,7 @@ use std::{
     io::{self, prelude::*},
     net::{TcpListener, TcpStream},
     thread,
-    time::SystemTime,
+    time::{SystemTime},
 };
 
 fn handle_client(mut stream: TcpStream) -> thread::JoinHandle<()> {
@@ -42,10 +42,14 @@ fn client_proc(host: String, port: u32, secs: u64, flows: u32, flow_offset: u64)
         let connect_to = connect_to.clone();
         let handle = thread::spawn(move || {
             let mut client = TcpStream::connect(connect_to).expect("failed to connect");
+            client.set_write_timeout(Some(std::time::Duration::from_nanos(1))).unwrap();
             let start = SystemTime::now();
             let buf = [1; 5000];
             while SystemTime::now().duration_since(start).unwrap().as_secs() < secs {
-                client.write(&buf).unwrap();
+                let written = client.write(&buf).unwrap();
+                if written < 1 {
+                    println!("wrote no bytes");
+                }
                 client.flush().unwrap();
             }
             eprintln!("Thread finished sending");

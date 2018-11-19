@@ -32,6 +32,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut dir: String = String::from(".");
     let mut output: String = String::from("");
     let mut granularity: i64 = 500;
+    let mut output_type = String::from("throughput");
 
     if env::args().len() < 3 {
         eprintln!("Args: <pcap_regex> <directory> [output_dir] [granularity] ");
@@ -44,6 +45,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 2 => dir = arg,
                 3 => output = arg,
                 4 => granularity = arg.parse::<i64>()?,
+                5 => output_type = arg,
                 _ => eprintln!("arg {} is {}", i, arg),
             }
         }
@@ -51,15 +53,29 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
 
-    let parsed_pcaps: Vec<(String, i64, Vec<(u16, Vec<Throughput>)>)> = files.par_iter().map(|file| {
+    let parsed_pcaps: Vec<(String, i64, Vec<(u16, Vec<TimeVal>)>)> = files.par_iter().map(|file| {
         let stem = Path::new(&file).file_stem().unwrap().to_str().unwrap();
         eprintln!("shortpath: {}", stem);
         let mut cap = open_capture(&file).unwrap();
 
-        let tps = calculate_throughput(&mut cap, granularity);
+        // let tps = calculate_throughput(&mut cap, granularity);
+        let tps = match output_type.as_ref() {
+            "throughput" => {
+                eprintln!("Calculating throughput");
+                calculate_throughput(&mut cap, granularity)
+            },
+            "inflight" => {
+                eprintln!("Calculating inflight");
+                calculate_inflight(&mut cap, granularity)
+            },
+            _ => {
+                eprintln!("No such option. Falling back on throughput"); 
+                calculate_throughput(&mut cap, granularity)
+            }
+        };
         let mut start_time = std::i64::MAX;
-        let vec_tps: Vec<(u16, Vec<Throughput>)> = tps.into_iter().filter_map(|(port, tp)| {
-            let non_zero_throughput : Vec<&Throughput> = tp.iter().filter(|tp| {
+        let vec_tps: Vec<(u16, Vec<TimeVal>)> = tps.into_iter().filter_map(|(port, tp)| {
+            let non_zero_throughput : Vec<&TimeVal> = tp.iter().filter(|tp| {
                 tp.value > 200
             }).collect();
 
@@ -95,7 +111,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn write_throughput(filename: &str, tps: &Vec<Throughput>, start_time: i64) -> io::Result<()> {
+fn write_throughput(filename: &str, tps: &Vec<TimeVal>, start_time: i64) -> io::Result<()> {
     let mut file = fs::File::create(filename)?;
     eprintln!("writing to: {}", filename);
     for tp in tps {
@@ -120,7 +136,8 @@ fn get_files_matching(reg_str: &str, dir_str: &str) -> Vec<String> {
     }).collect()
 }
 
-struct Throughput {
+#[derive(Debug)]
+struct TimeVal {
     time: i64,
     value: i64,
 }
@@ -156,12 +173,79 @@ fn calculate_throughput_between(pkts: &[Pkts]) -> i64 {
     data_size
 }
 
+/// calculate the amount of data inflight at each time step
+/// this is done by taking the sent - the last ack
+    fn calculate_inflight(cap: &mut Capture<Offline>, granularity: i64) -> HashMap<u16, Vec<TimeVal>> { 
+    // pair of last sent, last acked
+    let mut intermediate_flows: HashMap<u16, (u32, u32)> = HashMap::new();
+    let mut intermediate_t_top: HashMap<u16, i64> = HashMap::new();
+    // result
+    let mut flows_throughput: HashMap<u16, Vec<TimeVal>> = HashMap::new();
+
+    while let Ok(p) = cap.next() {
+        let d: Vec<u8> = p.data.iter().cloned().collect();
+        let tv = timeval {
+            tv_sec: p.header.ts.tv_sec,
+            tv_usec: p.header.ts.tv_usec
+        };
+
+        let pkt = parse(d, tv.to_milliseconds());
+        let src_port = pkt.tcp_p.get_source() as u16;
+        // start flow parsing if the flow hasn't been seen
+        if !intermediate_flows.contains_key(&src_port) {
+            intermediate_flows.insert(src_port, (0, 0));
+            intermediate_t_top.insert(src_port, pkt.time + granularity);
+            flows_throughput.insert(src_port, Vec::with_capacity(1000));
+        }
+        let t_top = *(intermediate_t_top.get(&src_port).unwrap());
+
+        if pkt.time > t_top {
+            // calculate the throughput for the intermediate window
+            let (last_sent, last_acked)= intermediate_flows.get(&src_port).unwrap();
+
+            let inflight = last_sent - last_acked; 
+
+            let tp = TimeVal {
+                    time: t_top, 
+                    value: inflight as i64
+                };
+
+            intermediate_t_top.remove(&src_port);
+            intermediate_t_top.insert(src_port, t_top + granularity);
+
+            eprintln!("throughput is {:?}", tp);
+            flows_throughput.get_mut(&src_port).unwrap().push(tp);
+        }
+
+        // for each packet, if from sender
+        // update the # sent
+        // if from the receiver, update the acked
+        let dst: String = pkt.ip_p.get_destination().to_string();
+        let (last_sent, last_acked) = *intermediate_flows.get(&src_port).unwrap();
+        println!("sent: {} acked: {}", last_sent, last_acked);
+        if SENDER_DST.is_match(&dst) { // going sender -> client
+            let (sent, _) = intermediate_flows.get_mut(&src_port).unwrap();
+            if *sent > last_sent {
+                * sent = pkt.tcp_p.get_sequence();
+            }
+        }   
+        else {
+            let (_, acked) = intermediate_flows.get_mut(&src_port).unwrap();
+            if *acked > last_acked {
+                * acked = pkt.tcp_p.get_sequence();
+            }
+        }
+        
+    }
+    flows_throughput
+}
+
 /// Takes sorted list of Pkts
-fn calculate_throughput(cap: &mut Capture<Offline>, granularity: i64) -> HashMap<u16, Vec<Throughput>> {
+fn calculate_throughput(cap: &mut Capture<Offline>, granularity: i64) -> HashMap<u16, Vec<TimeVal>> {
     let mut intermediate_flows: HashMap<u16, Vec<Pkts>> = HashMap::new();
     let mut intermediate_t_top: HashMap<u16, i64> = HashMap::new();
     // result
-    let mut flows_throughput: HashMap<u16, Vec<Throughput>> = HashMap::new();
+    let mut flows_throughput: HashMap<u16, Vec<TimeVal>> = HashMap::new();
 
     while let Ok(p) = cap.next() {
         let d: Vec<u8> = p.data.iter().cloned().collect();
@@ -186,7 +270,7 @@ fn calculate_throughput(cap: &mut Capture<Offline>, granularity: i64) -> HashMap
             let throughput =
             (calculate_throughput_between(window) as i64) as f64 / (granularity as f64 / 1000.) * 8.;
 
-            let tp = Throughput {
+            let tp = TimeVal {
                     time: t_top, 
                     value: throughput as i64
                     };

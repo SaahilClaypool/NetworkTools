@@ -36,7 +36,7 @@ def main():
         plt.xlabel(sys.argv[6])
     plt.title(name)
     plt.ylim(ymin=0)
-    plt.savefig(name)
+    plt.savefig(name, dpi='figure')
     if (len(sys.argv) > 4 and sys.argv[4] == "show"):
         plt.show()
 

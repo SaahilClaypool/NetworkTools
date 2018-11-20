@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 tp.value > 200
             }).collect();
 
-            if non_zero_throughput.len() > 100 {
+            if non_zero_throughput.len() > 1 {
                 if tp[0].time < start_time {
                     start_time = tp[0].time;
                 }
@@ -191,51 +191,63 @@ fn calculate_throughput_between(pkts: &[Pkts]) -> i64 {
 
         let pkt = parse(d, tv.to_milliseconds());
         let src_port = pkt.tcp_p.get_source() as u16;
-        // start flow parsing if the flow hasn't been seen
-        if !intermediate_flows.contains_key(&src_port) {
-            intermediate_flows.insert(src_port, (0, 0));
-            intermediate_t_top.insert(src_port, pkt.time + granularity);
-            flows_throughput.insert(src_port, Vec::with_capacity(1000));
-        }
-        let t_top = *(intermediate_t_top.get(&src_port).unwrap());
-
-        if pkt.time > t_top {
-            // calculate the throughput for the intermediate window
-            let (last_sent, last_acked)= intermediate_flows.get(&src_port).unwrap();
-
-            let inflight = last_sent - last_acked; 
-
-            let tp = TimeVal {
-                    time: t_top, 
-                    value: inflight as i64
-                };
-
-            intermediate_t_top.remove(&src_port);
-            intermediate_t_top.insert(src_port, t_top + granularity);
-
-            eprintln!("throughput is {:?}", tp);
-            flows_throughput.get_mut(&src_port).unwrap().push(tp);
-        }
+        let dst_port = pkt.tcp_p.get_destination() as u16;
+        let mut flow_port = src_port;
 
         // for each packet, if from sender
         // update the # sent
         // if from the receiver, update the acked
         let dst: String = pkt.ip_p.get_destination().to_string();
-        let (last_sent, last_acked) = *intermediate_flows.get(&src_port).unwrap();
-        println!("sent: {} acked: {}", last_sent, last_acked);
-        if SENDER_DST.is_match(&dst) { // going sender -> client
-            let (sent, _) = intermediate_flows.get_mut(&src_port).unwrap();
-            if *sent > last_sent {
-                * sent = pkt.tcp_p.get_sequence();
+        if SENDER_DST.is_match(&dst) { // going sender -> client (aka dest is 5201)
+            // start flow parsing if the flow hasn't been seen
+            if !intermediate_flows.contains_key(&src_port) {
+                intermediate_flows.insert(src_port, (0, 0));
+                intermediate_t_top.insert(src_port, pkt.time + granularity);
+                flows_throughput.insert(src_port, Vec::with_capacity(1000));
+            }
+            let (last_sent, last_acked) = *intermediate_flows.get(&src_port).unwrap();
+            let sent = pkt.tcp_p.get_sequence();
+            if sent > last_sent {
+                *intermediate_flows.get_mut(&src_port).unwrap() = (sent, last_acked);
             }
         }   
-        else {
-            let (_, acked) = intermediate_flows.get_mut(&src_port).unwrap();
-            if *acked > last_acked {
-                * acked = pkt.tcp_p.get_sequence();
+        else { // going from client -> source. aka src is 5201, we want to modify the dst port flow
+            // start flow parsing if the flow hasn't been seen
+            if !intermediate_flows.contains_key(&dst_port) {
+                intermediate_flows.insert(src_port, (0, 0));
+                intermediate_t_top.insert(src_port, pkt.time + granularity);
+                flows_throughput.insert(src_port, Vec::with_capacity(1000));
             }
+            let (last_sent, last_acked) = *intermediate_flows.get(&dst_port).unwrap();
+            let acked = pkt.tcp_p.get_acknowledgement();
+            if acked > last_acked {
+               *intermediate_flows.get_mut(&dst_port).unwrap() = (last_sent, acked);
+            }
+            flow_port = dst_port;
         }
-        
+
+
+        let t_top = *(intermediate_t_top.get(&flow_port).unwrap());
+
+        if pkt.time > t_top {
+            // calculate the throughput for the intermediate window
+            let (last_sent, last_acked)= intermediate_flows.get(&flow_port).unwrap();
+
+            let mut inflight = 0;
+            if last_acked < last_sent {
+                inflight = last_sent - last_acked;
+            }
+            let tp = TimeVal {
+                    time: t_top, 
+                    value: inflight as i64
+                };
+
+            intermediate_t_top.remove(&flow_port);
+            intermediate_t_top.insert(flow_port, t_top + granularity);
+
+            flows_throughput.get_mut(&flow_port).unwrap().push(tp);
+        }
+
     }
     flows_throughput
 }

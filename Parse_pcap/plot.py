@@ -10,6 +10,12 @@ import matplotlib.pyplot as plt
 def main():
     if (len(sys.argv) < 4):
         print("enter more args")
+        print("""\
+1: directory
+2: name part
+3. name
+4. should_show (blank if false)
+""")
         exit(1)
     dirname = sys.argv[1]
     r_pattern = re.compile(".*{}.*csv".format(sys.argv[2]))
@@ -23,11 +29,15 @@ def main():
             plot_one(f)
     
     plt.ylabel("throughput (mbps)")
+    if (len(sys.argv) > 5):
+        plt.ylabel(sys.argv[5])
     plt.xlabel("time (s)")
+    if (len(sys.argv) > 6):
+        plt.xlabel(sys.argv[6])
     plt.title(name)
     plt.ylim(ymin=0)
     plt.savefig(name)
-    if (len(sys.argv) >= 4):
+    if (len(sys.argv) > 4 and sys.argv[4] == "show"):
         plt.show()
 
 def plot_one(filename):
@@ -38,7 +48,6 @@ def plot_one(filename):
         for row in reader:
             x.append(float(row[0]) / 1000)
             y.append(float(row[1].strip()))
-
     plt.plot(x,y)
 
 if __name__ == '__main__':

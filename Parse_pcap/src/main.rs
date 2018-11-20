@@ -267,8 +267,8 @@ fn calculate_measurements(
 
         let pkt = parse(d, tv.to_milliseconds());
         let src_port = pkt.tcp_p.get_source() as u16;
-        let dst_port = pkt.tcp_p.get_source() as u16;
-        let mut flow_label = src_port;
+        let dst_port = pkt.tcp_p.get_destination() as u16;
+        let flow_label;
 
         let dst: String = pkt.ip_p.get_destination().to_string();
         if SENDER_DST.is_match(&dst) {
@@ -290,11 +290,12 @@ fn calculate_measurements(
             measure.on_packet(flow_label, pkt.clone(), granularity);
         }
 
-        let mut t_top = *(intermediate_t_top.get(&src_port).unwrap());
+        let t_top = *(intermediate_t_top.get(&flow_label).unwrap());
 
         if pkt.time > t_top {
             // update measurement at end of each window
             let mut all_results = Vec::new();
+            all_results.push(t_top);
             for measure in measurements.iter_mut() {
                 let res = measure.on_window(flow_label, granularity);
                 all_results.push(res);
@@ -303,7 +304,7 @@ fn calculate_measurements(
                 .get_mut(&flow_label)
                 .unwrap()
                 .push(all_results);
-            t_top += granularity;
+            *intermediate_t_top.get_mut(&flow_label).unwrap() += granularity;
         }
     }
     flows_throughput

@@ -23,7 +23,7 @@
                 ".",
                 ".",
                 "500",
-                "inflight"
+                "throughput"
             ],
             "cwd": "${workspaceFolder}"
         },

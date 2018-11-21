@@ -23,28 +23,32 @@ def main():
     r_pattern = re.compile(".*{}.*csv".format(sys.argv[2]))
     name = sys.argv[3]
     print(r_pattern)
+
+
+    expected_points = 50
+    if (len(sys.argv) > 5):
+        expected_points = int(sys.argv[5])
+
+
+
     files = []
     header = ["time", "throughput", "inflight", "rtt"]
+    iheader = dict(map(lambda x: (x[1], x[0] - 1), enumerate(header)))
     fig, axes = plt.subplots(nrows = len(header) - 1, ncols=1)
     for f in listdir(dirname):
         if (isfile(join(dirname, f)) and r_pattern.search(str(f))):
+            cheader = ["inflight", "rtt"]
             if (sender in f):
                 cheader = ["inflight", "rtt"]
-                plot_one(f, cheader, fig, axes)
             else:
                 cheader = ["throughput"]
-                plot_one(f, cheader, fig, axes)
+            plot_one(f, cheader, iheader, fig, axes, expected_points)
             f = join(dirname, f)
             print(f)
-            if (sender in f):
-                header = ["inflight", "rtt"]
-                plot_one(f, header, fig, axes)
-            else:
-                header = ["throughput"]
-                plot_one(f, header, fig, axes)
     
     for idx, h in enumerate(header[1:]):
         axes[idx].set_ylabel(h)
+        print("setting label to ", h)
     axes[-1].set_xlabel("time (seconds)")
     fig.suptitle(name)
     # plt.ylabel("throughput (mbps)")
@@ -59,7 +63,7 @@ def main():
     if (len(sys.argv) > 4 and sys.argv[4] == "show"):
         plt.show()
 
-def plot_one(filename, header, fig, plots):
+def plot_one(filename, header, plot_indexs, fig, plots, expected_points):
     time = []
     outputs = {}
     for h in header:
@@ -71,8 +75,10 @@ def plot_one(filename, header, fig, plots):
             time.append(float(row["time"]) / 1000)
             for idx, h in enumerate(header):
                 outputs[h].append(float(row[h]))
-        for idx, h in enumerate(header):
-            plots[idx].plot(time, outputs[h])
+        if (len(time) < expected_points):
+            return
+        for h in header:
+            plots[plot_indexs[h]].plot(time, outputs[h])
 
 if __name__ == '__main__':
     main()

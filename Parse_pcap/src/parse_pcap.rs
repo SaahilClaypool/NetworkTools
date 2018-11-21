@@ -181,12 +181,19 @@ impl <'a> ParserEntry <'a> for RTTState {
                 break;
             }
             count += 1;
-            sum += pkt.ack_time - pkt.sent_time;
+            if pkt.ack_time > pkt.sent_time {
+                let cur_rtt = pkt.ack_time - pkt.sent_time;
+                if cur_rtt > granularity {
+                    println!("That's odd... {} {} rtt {}, throwing away" , pkt.sent_time, pkt.ack_time, cur_rtt);
+                    count -= 1;
+                } else {
+                    sum += cur_rtt;
+                }
+            } 
         }
         // clear the list up to the last acked packet
         *window = window.split_off(count);
         if count == 0 {
-            self.last_rtt += granularity;
         } else {
             self.last_rtt = (sum as f64 / count as f64) as i64;
         }

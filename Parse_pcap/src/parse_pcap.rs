@@ -74,7 +74,127 @@ impl<'a> ParserEntry<'a> for ThroughputState<'a> {
     }
 
     fn get_label(&self) -> &'static str {
-        "Throughput"
+        "throughput"
+    }
+}
+
+pub struct InflightState {
+    intermediate_flows: HashMap<u16, (u32, u32)>
+}
+
+impl InflightState {
+    pub fn new() -> Self {
+        InflightState {
+            intermediate_flows: HashMap::new()
+        }
+    }
+}
+
+impl <'a> ParserEntry<'a> for InflightState {
+    /// called for each packet to update state
+    fn on_packet(&mut self, flow_label: u16, packet: Rc<Pkts<'a>>, granularity: i64) {
+        if !self.intermediate_flows.contains_key(&flow_label) {
+            self.intermediate_flows.insert(flow_label, (0, 0));
+        }
+        let (last_sent, last_acked) = *self.intermediate_flows.get(&flow_label).unwrap();
+        let dst = packet.ip_p.get_destination().to_string();
+        if SENDER_DST.is_match(&dst) { 
+            let sent = packet.tcp_p.get_sequence();
+            if sent > last_sent {
+                *self.intermediate_flows.get_mut(&flow_label).unwrap() = (sent, last_acked);
+            }
+        } else {
+            let acked = packet.tcp_p.get_acknowledgement();
+            if acked > last_acked {
+                *self.intermediate_flows.get_mut(&flow_label).unwrap() = (last_sent, acked);
+            }
+        }
+    }
+    /// called every window, get the data for that window
+    /// returns the value computed for that window
+    fn on_window(&mut self, flow_label: u16, granularity: i64) -> i64 {
+        let (last_sent, last_acked) = self.intermediate_flows.get(&flow_label).unwrap();
+        let mut inflight = 0; 
+        if last_sent > last_acked {
+            inflight = last_sent - last_acked
+        }
+        inflight as i64
+    }
+
+    fn get_label(&self) -> &'static str {
+        "inflight"
+    }
+}
+
+struct PacketTime {
+    seq_num: u32, 
+    sent_time: i64,
+    ack_time: i64,
+}
+
+pub struct RTTState {
+    intermediate_flows: HashMap<u16, Vec<PacketTime>>,
+    last_rtt: i64,
+}
+
+impl RTTState {
+    pub fn new() -> Self {
+        Self {
+            intermediate_flows: HashMap::new(),
+            last_rtt: 0
+        }
+    }
+}
+
+impl <'a> ParserEntry <'a> for RTTState {
+    /// each packet, update the time of the last 
+    fn on_packet(&mut self, flow_label: u16, packet: Rc<Pkts<'a>>, granularity: i64) {
+        if !self.intermediate_flows.contains_key(&flow_label) {
+            self.intermediate_flows.insert(flow_label, Vec::new());
+        }
+        let window = self.intermediate_flows.get_mut(&flow_label).unwrap();
+        let dst = packet.ip_p.get_destination().to_string();
+        if SENDER_DST.is_match(&dst) { 
+            // for each sent, add it to the list of packets sent and unacked
+            window.push(PacketTime {
+                seq_num: packet.tcp_p.get_sequence(),
+                sent_time: packet.time,
+                ack_time: -1,
+            });
+        } else {
+            let ack_num = packet.tcp_p.get_acknowledgement();
+            for p in window.iter_mut() {
+                if p.seq_num < ack_num && p.ack_time == -1 {
+                    p.ack_time = packet.time
+                }
+            }
+        }
+    }
+    /// called every window, get the data for that window
+    /// returns the value computed for that window
+    fn on_window(&mut self, flow_label: u16, granularity: i64) -> i64 {
+        let window = self.intermediate_flows.get_mut(&flow_label).unwrap();
+        let mut sum = 0; 
+        let mut count = 0; 
+        for pkt in window.iter() {
+            if pkt.ack_time == -1 {
+                break;
+            }
+            count += 1;
+            sum += pkt.ack_time - pkt.sent_time;
+        }
+        // clear the list up to the last acked packet
+        *window = window.split_off(count);
+        if count == 0 {
+            self.last_rtt += granularity;
+        } else {
+            self.last_rtt = (sum as f64 / count as f64) as i64;
+        }
+        return self.last_rtt;
+    }
+
+    fn get_label(&self) -> &'static str {
+        "rtt"
     }
 }
 

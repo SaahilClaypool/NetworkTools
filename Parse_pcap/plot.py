@@ -6,6 +6,8 @@ from os.path import isfile, join
 
 import matplotlib.pyplot as plt
 
+sender = "churro"
+receiver = "tarta"
 
 def main():
     if (len(sys.argv) < 4):
@@ -26,6 +28,12 @@ def main():
     fig, axes = plt.subplots(nrows = len(header) - 1, ncols=1)
     for f in listdir(dirname):
         if (isfile(join(dirname, f)) and r_pattern.search(str(f))):
+            if (sender in f):
+                cheader = ["inflight", "rtt"]
+                plot_one(f, cheader, fig, axes)
+            else:
+                cheader = ["throughput"]
+                plot_one(f, cheader, fig, axes)
             f = join(dirname, f)
             print(f)
             plot_one(f, header[1:], fig, axes)

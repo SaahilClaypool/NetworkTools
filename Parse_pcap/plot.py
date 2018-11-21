@@ -36,7 +36,12 @@ def main():
                 plot_one(f, cheader, fig, axes)
             f = join(dirname, f)
             print(f)
-            plot_one(f, header[1:], fig, axes)
+            if (sender in f):
+                header = ["inflight", "rtt"]
+                plot_one(f, header, fig, axes)
+            else:
+                header = ["throughput"]
+                plot_one(f, header, fig, axes)
     
     for idx, h in enumerate(header[1:]):
         axes[idx].set_ylabel(h)

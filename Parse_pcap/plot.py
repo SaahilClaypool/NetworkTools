@@ -6,6 +6,8 @@ from os.path import isfile, join
 
 import matplotlib.pyplot as plt
 
+sender = "churro"
+receiver = "tarta"
 
 def main():
     if (len(sys.argv) < 4):
@@ -28,7 +30,12 @@ def main():
         if (isfile(join(dirname, f)) and r_pattern.search(str(f))):
             f = join(dirname, f)
             print(f)
-            plot_one(f, header[1:], fig, axes)
+            if (sender in f):
+                header = ["inflight", "rtt"]
+                plot_one(f, header, fig, axes)
+            else:
+                header = ["throughput"]
+                plot_one(f, header, fig, axes)
     
     for idx, h in enumerate(header[1:]):
         axes[idx].set_ylabel(h)

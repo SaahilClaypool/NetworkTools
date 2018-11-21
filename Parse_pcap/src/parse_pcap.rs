@@ -164,7 +164,7 @@ impl <'a> ParserEntry <'a> for RTTState {
         } else {
             let ack_num = packet.tcp_p.get_acknowledgement();
             for p in window.iter_mut() {
-                if p.seq_num < ack_num && p.ack_time == -1 {
+                if p.seq_num <= ack_num && p.ack_time == -1 {
                     p.ack_time = packet.time
                 }
             }

@@ -89,11 +89,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut start_time = std::i64::MAX;
             let vec_tps: Vec<(u16, Vec<Vec<i64>>)> = tps
                 .into_iter()
-                .map(|(port, tp)| {
+                .filter_map(|(port, tp)| {
+                    if tp.len() == 0 || tp[0].len() == 0 {
+                        return None;
+                    }
                     if tp[0][0] < start_time {
                         start_time = tp[0][0];
                     }
-                    (port, tp)
+                    Some((port, tp))
                 })
                 .collect();
 

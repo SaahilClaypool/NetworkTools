@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 
 sender = "churro"
 receiver = "tarta"
+percent_shown = .9
 
 def main():
     if (len(sys.argv) < 4):
@@ -78,7 +79,11 @@ def plot_one(filename, header, plot_indexs, fig, plots, expected_points):
         if (len(time) < expected_points):
             return
         for h in header:
-            plots[plot_indexs[h]].plot(time, outputs[h])
+            o = outputs[h]
+            last = int(len(o) * percent_shown)
+            o = o[:last]
+            t = time[:last]
+            plots[plot_indexs[h]].plot(t, o)
 
 if __name__ == '__main__':
     main()

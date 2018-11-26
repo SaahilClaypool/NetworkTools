@@ -187,6 +187,9 @@ fn calculate_measurements(
     let mut intermediate_t_top: HashMap<u16, i64> = HashMap::new();
     let mut flows_throughput: HashMap<u16, Vec<Vec<i64>>> = HashMap::new();
 
+    let mut progress = 0;
+    let mut progress_start = 0;
+
     while let Ok(p) = cap.next() {
         let d: Vec<u8> = p.data.iter().cloned().collect();
         let tv = timeval {
@@ -220,6 +223,16 @@ fn calculate_measurements(
         }
 
         let t_top = *(intermediate_t_top.get(&flow_label).unwrap());
+
+        if progress == 0 {
+            progress = pkt.time;
+            progress_start = progress;
+        }
+
+        if pkt.time > progress + 1000 {
+            progress += 1000;
+            println!("progress: {}", progress - progress_start);
+        }
 
         if pkt.time > t_top {
             // update measurement at end of each window

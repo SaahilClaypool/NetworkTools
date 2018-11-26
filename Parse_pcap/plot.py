@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 import csv
 import sys
 import re
@@ -20,6 +21,7 @@ def main():
 4. should_show (blank if false)
 """)
         exit(1)
+    print(sys.argv)
     dirname = sys.argv[1]
     r_pattern = re.compile(".*{}.*csv".format(sys.argv[2]))
     name = sys.argv[3]

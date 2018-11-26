@@ -65,7 +65,7 @@ impl<'a> ParserEntry<'a> for ThroughputState<'a> {
         let window = self.intermediate_flows.get(&flow_label).unwrap();
         let throughput = (Self::calculate_throughput_between(window) as i64) as f64
             / (granularity as f64 / 1000.)
-            * 8.;
+            * 8. / 1000000.; // bytes to megabits
 
         self.intermediate_flows.remove(&flow_label);
         self.intermediate_flows

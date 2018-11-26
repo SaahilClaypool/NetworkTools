@@ -34,9 +34,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut files: Vec<String> = vec![];
     let mut reg_string = String::from(".*pcap");
     let mut dir: String = String::from(".");
-    let mut output: String = String::from("");
+    let mut output_dir: String = String::from(".");
     let mut granularity: i64 = 500;
-    let mut output_type = String::from("throughput");
 
     if env::args().len() < 3 {
         eprintln!("Args: <pcap_regex> <directory> [output_dir] [granularity] ");
@@ -46,9 +45,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             match i {
                 1 => reg_string = format!(".*{}.*.pcap$", arg),
                 2 => dir = arg,
-                3 => output = arg,
+                3 => output_dir = arg,
                 4 => granularity = arg.parse::<i64>()?,
-                5 => output_type = arg,
                 _ => eprintln!("arg {} is {}", i, arg),
             }
         }
@@ -113,9 +111,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     parsed_pcaps.par_iter().for_each(|(stem, start, flow_map)| {
         flow_map.into_par_iter().for_each(|(port, flow)| {
-            let output_name = &format!("{}_{}.csv", stem, port);
+            let output_name = &format!("{}/{}_{}.csv", output_dir, stem, port);
             write_throughput(output_name, &measure_labels, flow, min_start_time).unwrap();
         });
+        let mut file = fs::File::create(format!("{}/start_time.txt", output_dir)).unwrap();
+        file.write_fmt(format_args!("{}\n", min_start_time)).unwrap();
     });
 
     Ok(())

@@ -1,4 +1,4 @@
-use pnet_packet::{ethernet, ipv4, tcp, FromPacket, Packet};
+use pnet_packet::{ethernet, ipv4, tcp};
 use regex::Regex;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -30,9 +30,7 @@ impl<'a> ThroughputState<'a> {
 
     fn calculate_throughput_between(pkts: &[Rc<Pkts<'_>>]) -> i64 {
         let mut data_size: i64 = 0;
-        for idx in 0..pkts.len() {
-            let p = &pkts[idx];
-
+        for p in pkts {
             let dst: String = p.ip_p.get_destination().to_string();
             if SENDER_DST.is_match(&dst) {
                 data_size += Self::packet_len(p) as i64;
@@ -51,10 +49,8 @@ impl<'a> ThroughputState<'a> {
 impl<'a> ParserEntry<'a> for ThroughputState<'a> {
     /// just keep track of all the data in this window for each flow we see
     fn on_packet(&mut self, flow_label: u16, packet: Rc<Pkts<'a>>, _granularity: i64) {
-        if !self.intermediate_flows.contains_key(&flow_label) {
-            self.intermediate_flows
-                .insert(flow_label, Vec::with_capacity(1000));
-        }
+        self.intermediate_flows.entry(flow_label).or_insert_with(|| Vec::with_capacity(1000));
+
         self.intermediate_flows
             .get_mut(&flow_label)
             .unwrap()
@@ -62,16 +58,16 @@ impl<'a> ParserEntry<'a> for ThroughputState<'a> {
     }
 
     fn on_window(&mut self, flow_label: u16, granularity: i64) -> i64 {
-        let window = self.intermediate_flows.get(&flow_label).unwrap();
+        let window = &self.intermediate_flows[&flow_label];
         let throughput = (Self::calculate_throughput_between(window) as i64) as f64
             / (granularity as f64 / 1000.)
             * 8.
-            / 1000000.; // bytes to megabits
+            / 1_000_000.; // bytes to megabits
 
         self.intermediate_flows.remove(&flow_label);
         self.intermediate_flows
             .insert(flow_label, Vec::with_capacity(1000));
-        return throughput as i64;
+        throughput as i64
     }
 
     fn get_label(&self) -> &'static str {
@@ -96,12 +92,11 @@ impl InflightState {
 impl<'a> ParserEntry<'a> for InflightState {
     /// called for each packet to update state
     fn on_packet(&mut self, flow_label: u16, packet: Rc<Pkts<'a>>, _granularity: i64) {
-        if !self.intermediate_flows.contains_key(&flow_label) {
-            self.intermediate_flows.insert(flow_label, (0, 0));
-            self.start_flows.insert(flow_label, (0, 0));
-        }
-        let (last_sent, last_acked) = *self.intermediate_flows.get(&flow_label).unwrap();
-        let (first_sent, first_acked) = *self.start_flows.get(&flow_label).unwrap();
+        self.intermediate_flows.entry(flow_label).or_insert((0,0));
+        self.start_flows.entry(flow_label).or_insert((0,0));
+
+        let (last_sent, last_acked) = self.intermediate_flows[&flow_label];
+        let (first_sent, first_acked) = self.start_flows[&flow_label];
 
         let dst = packet.ip_p.get_destination().to_string();
         if SENDER_DST.is_match(&dst) {
@@ -136,7 +131,7 @@ impl<'a> ParserEntry<'a> for InflightState {
     /// called every window, get the data for that window
     /// returns the value computed for that window
     fn on_window(&mut self, flow_label: u16, _granularity: i64) -> i64 {
-        let (last_sent, last_acked) = self.intermediate_flows.get(&flow_label).unwrap();
+        let (last_sent, last_acked) = self.intermediate_flows[&flow_label];
         let mut inflight = 0;
         if last_sent > last_acked {
             inflight = last_sent - last_acked
@@ -172,9 +167,7 @@ impl RTTState {
 impl<'a> ParserEntry<'a> for RTTState {
     /// each packet, update the time of the last
     fn on_packet(&mut self, flow_label: u16, packet: Rc<Pkts<'a>>, _granularity: i64) {
-        if !self.intermediate_flows.contains_key(&flow_label) {
-            self.intermediate_flows.insert(flow_label, Vec::new());
-        }
+        self.intermediate_flows.entry(flow_label).or_insert_with(Vec::new);
         let window = self.intermediate_flows.get_mut(&flow_label).unwrap();
         let dst = packet.ip_p.get_destination().to_string();
         if SENDER_DST.is_match(&dst) {
@@ -224,7 +217,7 @@ impl<'a> ParserEntry<'a> for RTTState {
         } else {
             self.last_rtt = (sum as f64 / count as f64) as i64;
         }
-        return self.last_rtt;
+        self.last_rtt
     }
 
     fn get_label(&self) -> &'static str {

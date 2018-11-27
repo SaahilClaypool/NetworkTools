@@ -14,21 +14,27 @@ use linux_api::time::timeval;
 use pcap::{Capture, Offline};
 use rayon::prelude::*;
 use regex::Regex;
-use std::fs::{self, DirEntry};
+use std::fs::{self};
 use std::io;
 use std::io::Write;
 use std::path::Path;
 
-use pnet_packet::{ethernet, ipv4, tcp, FromPacket, Packet};
+use pnet_packet::{ethernet, ipv4, tcp, FromPacket};
 
 mod parse_pcap;
 
 use self::parse_pcap::{InflightState, ParserEntry, Pkts, RTTState, ThroughputState};
 
+struct ParsedPcap {
+    stem: String,
+    start_time: i64, 
+    tps: Vec<(u16, Vec<Vec<i64>>)>
+}
+
 /// Usage: cargo run '80.*bbr1_bbr1' '../Results/'  ; python3 plot.py . 80.*bbr_bbr_.*.tarta
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let mut files: Vec<String> = vec![];
+    let mut files: Vec<String>;
     let mut reg_string = String::from(".*pcap");
     let mut dir: String = String::from(".");
     let mut output_dir: String = String::from(".");
@@ -58,7 +64,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let measure_labels = measure_labels; // take away mut
 
-    let parsed_pcaps: Vec<(String, i64, Vec<(u16, Vec<Vec<i64>>)>)> = files
+    let parsed_pcaps: Vec<ParsedPcap> = files
         .par_iter()
         .map(|file| {
             let stem = Path::new(&file).file_stem().unwrap().to_str().unwrap();
@@ -66,7 +72,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut cap = open_capture(&file).unwrap();
             let mut measures: Vec<Box<dyn ParserEntry<'_>>> = Vec::new();
             for label in measure_labels.iter() {
-                match label.as_ref() {
+                match *label {
                     "throughput" => {
                         measures.push(Box::new(ThroughputState::new()));
                     }
@@ -85,7 +91,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let vec_tps: Vec<(u16, Vec<Vec<i64>>)> = tps
                 .into_iter()
                 .filter_map(|(port, tp)| {
-                    if tp.len() == 0 || tp[0].len() == 0 {
+                    if tp.is_empty() || tp[0].is_empty() {
                         return None;
                     }
                     if tp[0][0] < start_time {
@@ -95,12 +101,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                 })
                 .collect();
 
-            (String::from(stem), start_time, vec_tps)
+            ParsedPcap{stem: String::from(stem), start_time: start_time, tps: vec_tps}
         })
         .collect();
 
     let mut min_start_time = std::i64::MAX;
-    for (_, time, _) in &parsed_pcaps {
+    for ParsedPcap{start_time: time, .. } in &parsed_pcaps {
         if *time < min_start_time {
             min_start_time = *time;
         }
@@ -108,7 +114,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     parsed_pcaps
         .par_iter()
-        .for_each(|(stem, _start, flow_map)| {
+        .for_each(|ParsedPcap {stem, tps: flow_map, ..} | {
             flow_map.into_par_iter().for_each(|(port, flow)| {
                 let output_name = &format!("{}/{}_{}.csv", output_dir, stem, port);
                 write_throughput(output_name, &measure_labels, flow, min_start_time).unwrap();
@@ -123,8 +129,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 fn write_throughput(
     filename: &str,
-    labels: &Vec<&str>,
-    tps: &Vec<Vec<i64>>,
+    labels: &[&str],
+    tps: &[Vec<i64>],
     start_time: i64,
 ) -> io::Result<()> {
     let mut file = fs::File::create(filename)?;
@@ -134,17 +140,17 @@ fn write_throughput(
         .map(|label| label.to_string())
         .collect::<Vec<String>>()
         .join(",");
-    file.write(b"time,");
-    file.write_fmt(format_args!("{}\n", header));
+    file.write_all(b"time,").unwrap();
+    file.write_fmt(format_args!("{}\n", header)).unwrap();
     for tp in tps {
-        let mut tp: Vec<i64> = tp.iter().map(|v| *v).collect(); // just copy
+        let mut tp: Vec<i64> = tp.to_vec(); // clones all items into new vec.
         let time = tp.remove(0);
         let output = tp
             .iter()
             .map(|measure| measure.to_string())
             .collect::<Vec<String>>()
             .join(",");
-        file.write_fmt(format_args!("{},{}\n", time - start_time, output));
+        file.write_fmt(format_args!("{},{}\n", time - start_time, output)).unwrap();
     }
     Ok(())
 }
@@ -167,12 +173,6 @@ fn get_files_matching(reg_str: &str, dir_str: &str) -> Vec<String> {
         .collect()
 }
 
-#[derive(Debug)]
-struct TimeVal {
-    time: i64,
-    value: i64,
-}
-
 lazy_static! {
     static ref SENDER_SRC: regex::Regex = Regex::new("192.168.2..").unwrap();
     static ref SENDER_DST: regex::Regex = Regex::new("192.168.1..").unwrap();
@@ -189,7 +189,7 @@ fn calculate_measurements(
     let mut flows_throughput: HashMap<u16, Vec<Vec<i64>>> = HashMap::new();
 
     while let Ok(p) = cap.next() {
-        let d: Vec<u8> = p.data.iter().cloned().collect();
+        let d: Vec<u8> = p.data.to_vec();
         let tv = timeval {
             tv_sec: p.header.ts.tv_sec,
             tv_usec: p.header.ts.tv_usec,
@@ -208,10 +208,8 @@ fn calculate_measurements(
         }
 
         // start flow parsing if the flow hasn't been seen
-        if !intermediate_t_top.contains_key(&flow_label) {
-            intermediate_t_top.insert(flow_label, pkt.time + granularity);
-            flows_throughput.insert(flow_label, Vec::new());
-        }
+        intermediate_t_top.entry(flow_label).or_insert(pkt.time + granularity);
+        flows_throughput.entry(flow_label).or_insert_with(Vec::new);
 
         let pkt = Rc::new(pkt);
 
@@ -220,7 +218,7 @@ fn calculate_measurements(
             measure.on_packet(flow_label, pkt.clone(), granularity);
         }
 
-        let t_top = *(intermediate_t_top.get(&flow_label).unwrap());
+        let t_top = intermediate_t_top[&flow_label];
 
         if pkt.time > t_top {
             // update measurement at end of each window
@@ -242,8 +240,8 @@ fn calculate_measurements(
 
 fn parse<'a>(pkt: Vec<u8>, time: i64) -> Pkts<'a> {
     let eth_p = ethernet::EthernetPacket::owned(pkt).unwrap();
-    let ip_p = ipv4::Ipv4Packet::owned(Vec::from(eth_p.from_packet().payload)).unwrap();
-    let tcp_p = tcp::TcpPacket::owned(Vec::from(ip_p.from_packet().payload)).unwrap();
+    let ip_p = ipv4::Ipv4Packet::owned(eth_p.from_packet().payload).unwrap();
+    let tcp_p = tcp::TcpPacket::owned(ip_p.from_packet().payload).unwrap();
 
     Pkts {
         time: time,

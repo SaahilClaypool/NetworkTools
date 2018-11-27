@@ -6,6 +6,7 @@ from os import listdir
 from os.path import isfile, join
 
 import matplotlib as mpl
+should_show = False
 if (len(sys.argv) > 4 and sys.argv[4] == "show"):
     should_show = True
 else:
@@ -27,7 +28,6 @@ def main():
 """)
         exit(1)
     print(sys.argv)
-    should_show = False
 
     dirname = sys.argv[1]
     r_pattern = re.compile(".*{}.*csv".format(sys.argv[2]))

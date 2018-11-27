@@ -103,7 +103,6 @@ impl<'a> ParserEntry<'a> for InflightState {
             let sent = packet.tcp_p.get_sequence();
             if first_sent == 0 {
                 *self.start_flows.get_mut(&flow_label).unwrap() = (sent, first_acked);
-                println!("first sent , first ackd {} {}", sent, first_acked);
             }
             // handle wrapping seq numbers.
             if sent > last_sent
@@ -116,7 +115,6 @@ impl<'a> ParserEntry<'a> for InflightState {
             let acked = packet.tcp_p.get_acknowledgement();
             if first_acked == 0 {
                 *self.start_flows.get_mut(&flow_label).unwrap() = (first_sent, acked);
-                println!("first sent , first ackd {} {}", first_sent, acked);
             }
 
             // handle wrapping seq numbers.

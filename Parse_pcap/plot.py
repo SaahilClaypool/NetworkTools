@@ -5,6 +5,11 @@ import re
 from os import listdir
 from os.path import isfile, join
 
+import matplotlib as mpl
+if (len(sys.argv) > 4 and sys.argv[4] == "show"):
+    should_show = True
+else:
+    mpl.use('Agg')
 import matplotlib.pyplot as plt
 
 sender = "churro"
@@ -22,6 +27,8 @@ def main():
 """)
         exit(1)
     print(sys.argv)
+    should_show = False
+
     dirname = sys.argv[1]
     r_pattern = re.compile(".*{}.*csv".format(sys.argv[2]))
     name = sys.argv[3]
@@ -63,7 +70,7 @@ def main():
     # plt.title(name)
     # plt.ylim(ymin=0)
     fig.savefig(name, dpi='figure')
-    if (len(sys.argv) > 4 and sys.argv[4] == "show"):
+    if (should_show):
         plt.show()
 
 def plot_one(filename, header, plot_indexs, fig, plots, expected_points):

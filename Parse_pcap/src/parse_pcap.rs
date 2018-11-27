@@ -79,13 +79,15 @@ impl<'a> ParserEntry<'a> for ThroughputState<'a> {
 }
 
 pub struct InflightState {
-    intermediate_flows: HashMap<u16, (u32, u32)>
+    intermediate_flows: HashMap<u16, (u32, u32)>,
+    start_flows: HashMap<u16, (u32, u32)>,
 }
 
 impl InflightState {
     pub fn new() -> Self {
         InflightState {
-            intermediate_flows: HashMap::new()
+            intermediate_flows: HashMap::new(),
+            start_flows: HashMap::new(),
         }
     }
 }
@@ -95,17 +97,31 @@ impl <'a> ParserEntry<'a> for InflightState {
     fn on_packet(&mut self, flow_label: u16, packet: Rc<Pkts<'a>>, granularity: i64) {
         if !self.intermediate_flows.contains_key(&flow_label) {
             self.intermediate_flows.insert(flow_label, (0, 0));
+            self.start_flows.insert(flow_label, (0, 0));
         }
         let (last_sent, last_acked) = *self.intermediate_flows.get(&flow_label).unwrap();
+        let (first_sent, first_acked) = *self.start_flows.get(&flow_label).unwrap();
+
         let dst = packet.ip_p.get_destination().to_string();
         if SENDER_DST.is_match(&dst) { 
             let sent = packet.tcp_p.get_sequence();
-            if sent > last_sent {
+            if first_sent == 0 {
+                *self.start_flows.get_mut(&flow_label).unwrap() = (sent, first_acked);
+                println!("first sent , first ackd {} {}", sent, first_acked);
+            }
+            // handle wrapping seq numbers. 
+            if sent > last_sent || (sent < first_sent && (last_sent > first_sent || first_sent - sent < first_sent - last_sent)) {
                 *self.intermediate_flows.get_mut(&flow_label).unwrap() = (sent, last_acked);
             }
         } else {
             let acked = packet.tcp_p.get_acknowledgement();
-            if acked > last_acked {
+            if first_acked == 0 {
+                *self.start_flows.get_mut(&flow_label).unwrap() = (first_sent, acked);
+                println!("first sent , first ackd {} {}", first_sent, acked);
+            }
+
+            // handle wrapping seq numbers. 
+            if acked > last_acked || (acked < first_acked && (last_acked > first_acked || first_acked - acked < first_acked - last_acked)) {
                 *self.intermediate_flows.get_mut(&flow_label).unwrap() = (last_sent, acked);
             }
         }
@@ -178,7 +194,7 @@ impl <'a> ParserEntry <'a> for RTTState {
         let mut count = 0; 
         for pkt in window.iter() {
             if pkt.ack_time == -1 {
-                break;
+                continue;
             }
             count += 1;
             if pkt.ack_time > pkt.sent_time {

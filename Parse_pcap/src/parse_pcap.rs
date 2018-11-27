@@ -28,7 +28,7 @@ impl<'a> ThroughputState<'a> {
         }
     }
 
-    fn calculate_throughput_between(pkts: &[Rc<Pkts>]) -> i64 {
+    fn calculate_throughput_between(pkts: &[Rc<Pkts<'_>>]) -> i64 {
         let mut data_size: i64 = 0;
         for idx in 0..pkts.len() {
             let p = &pkts[idx];
@@ -41,7 +41,7 @@ impl<'a> ThroughputState<'a> {
         data_size
     }
 
-    fn packet_len(pkt: &Pkts) -> u32 {
+    fn packet_len(pkt: &Pkts<'_>) -> u32 {
         //     return ip_p.len - ip_p.hl * 4- tcp_p.data_offset
         pkt.ip_p.get_total_length() as u32
         // - pkt.ip_p.get_header_length() as u32
@@ -50,7 +50,7 @@ impl<'a> ThroughputState<'a> {
 }
 impl<'a> ParserEntry<'a> for ThroughputState<'a> {
     /// just keep track of all the data in this window for each flow we see
-    fn on_packet(&mut self, flow_label: u16, packet: Rc<Pkts<'a>>, granularity: i64) {
+    fn on_packet(&mut self, flow_label: u16, packet: Rc<Pkts<'a>>, _granularity: i64) {
         if !self.intermediate_flows.contains_key(&flow_label) {
             self.intermediate_flows
                 .insert(flow_label, Vec::with_capacity(1000));
@@ -65,7 +65,8 @@ impl<'a> ParserEntry<'a> for ThroughputState<'a> {
         let window = self.intermediate_flows.get(&flow_label).unwrap();
         let throughput = (Self::calculate_throughput_between(window) as i64) as f64
             / (granularity as f64 / 1000.)
-            * 8. / 1000000.; // bytes to megabits
+            * 8.
+            / 1000000.; // bytes to megabits
 
         self.intermediate_flows.remove(&flow_label);
         self.intermediate_flows
@@ -92,9 +93,9 @@ impl InflightState {
     }
 }
 
-impl <'a> ParserEntry<'a> for InflightState {
+impl<'a> ParserEntry<'a> for InflightState {
     /// called for each packet to update state
-    fn on_packet(&mut self, flow_label: u16, packet: Rc<Pkts<'a>>, granularity: i64) {
+    fn on_packet(&mut self, flow_label: u16, packet: Rc<Pkts<'a>>, _granularity: i64) {
         if !self.intermediate_flows.contains_key(&flow_label) {
             self.intermediate_flows.insert(flow_label, (0, 0));
             self.start_flows.insert(flow_label, (0, 0));
@@ -103,14 +104,17 @@ impl <'a> ParserEntry<'a> for InflightState {
         let (first_sent, first_acked) = *self.start_flows.get(&flow_label).unwrap();
 
         let dst = packet.ip_p.get_destination().to_string();
-        if SENDER_DST.is_match(&dst) { 
+        if SENDER_DST.is_match(&dst) {
             let sent = packet.tcp_p.get_sequence();
             if first_sent == 0 {
                 *self.start_flows.get_mut(&flow_label).unwrap() = (sent, first_acked);
                 println!("first sent , first ackd {} {}", sent, first_acked);
             }
-            // handle wrapping seq numbers. 
-            if sent > last_sent || (sent < first_sent && (last_sent > first_sent || first_sent - sent < first_sent - last_sent)) {
+            // handle wrapping seq numbers.
+            if sent > last_sent
+                || (sent < first_sent
+                    && (last_sent > first_sent || first_sent - sent < first_sent - last_sent))
+            {
                 *self.intermediate_flows.get_mut(&flow_label).unwrap() = (sent, last_acked);
             }
         } else {
@@ -120,17 +124,20 @@ impl <'a> ParserEntry<'a> for InflightState {
                 println!("first sent , first ackd {} {}", first_sent, acked);
             }
 
-            // handle wrapping seq numbers. 
-            if acked > last_acked || (acked < first_acked && (last_acked > first_acked || first_acked - acked < first_acked - last_acked)) {
+            // handle wrapping seq numbers.
+            if acked > last_acked
+                || (acked < first_acked
+                    && (last_acked > first_acked || first_acked - acked < first_acked - last_acked))
+            {
                 *self.intermediate_flows.get_mut(&flow_label).unwrap() = (last_sent, acked);
             }
         }
     }
     /// called every window, get the data for that window
     /// returns the value computed for that window
-    fn on_window(&mut self, flow_label: u16, granularity: i64) -> i64 {
+    fn on_window(&mut self, flow_label: u16, _granularity: i64) -> i64 {
         let (last_sent, last_acked) = self.intermediate_flows.get(&flow_label).unwrap();
-        let mut inflight = 0; 
+        let mut inflight = 0;
         if last_sent > last_acked {
             inflight = last_sent - last_acked
         }
@@ -143,7 +150,7 @@ impl <'a> ParserEntry<'a> for InflightState {
 }
 
 struct PacketTime {
-    seq_num: u32, 
+    seq_num: u32,
     sent_time: i64,
     ack_time: i64,
 }
@@ -157,20 +164,20 @@ impl RTTState {
     pub fn new() -> Self {
         Self {
             intermediate_flows: HashMap::new(),
-            last_rtt: 0
+            last_rtt: 0,
         }
     }
 }
 
-impl <'a> ParserEntry <'a> for RTTState {
-    /// each packet, update the time of the last 
-    fn on_packet(&mut self, flow_label: u16, packet: Rc<Pkts<'a>>, granularity: i64) {
+impl<'a> ParserEntry<'a> for RTTState {
+    /// each packet, update the time of the last
+    fn on_packet(&mut self, flow_label: u16, packet: Rc<Pkts<'a>>, _granularity: i64) {
         if !self.intermediate_flows.contains_key(&flow_label) {
             self.intermediate_flows.insert(flow_label, Vec::new());
         }
         let window = self.intermediate_flows.get_mut(&flow_label).unwrap();
         let dst = packet.ip_p.get_destination().to_string();
-        if SENDER_DST.is_match(&dst) { 
+        if SENDER_DST.is_match(&dst) {
             // for each sent, add it to the list of packets sent and unacked
             window.push(PacketTime {
                 seq_num: packet.tcp_p.get_sequence(),
@@ -188,10 +195,10 @@ impl <'a> ParserEntry <'a> for RTTState {
     }
     /// called every window, get the data for that window
     /// returns the value computed for that window
-    fn on_window(&mut self, flow_label: u16, granularity: i64) -> i64 {
+    fn on_window(&mut self, flow_label: u16, _granularity: i64) -> i64 {
         let window = self.intermediate_flows.get_mut(&flow_label).unwrap();
-        let mut sum = 0; 
-        let mut count = 0; 
+        let mut sum = 0;
+        let mut count = 0;
         for pkt in window.iter() {
             if pkt.ack_time == -1 {
                 continue;
@@ -199,13 +206,17 @@ impl <'a> ParserEntry <'a> for RTTState {
             count += 1;
             if pkt.ack_time > pkt.sent_time {
                 let cur_rtt = pkt.ack_time - pkt.sent_time;
-                if cur_rtt > 500 { // if greater half a second, there is a problem probably
-                    println!("That's odd... {} {} rtt {}, throwing away" , pkt.sent_time, pkt.ack_time, cur_rtt);
-                    count -= 1; 
+                if cur_rtt > 500 {
+                    // if greater half a second, there is a problem probably
+                    println!(
+                        "That's odd... {} {} rtt {}, throwing away",
+                        pkt.sent_time, pkt.ack_time, cur_rtt
+                    );
+                    count -= 1;
                 } else {
                     sum += cur_rtt;
                 }
-            } 
+            }
         }
         // clear the list up to the last acked packet
         *window = window.split_off(count);

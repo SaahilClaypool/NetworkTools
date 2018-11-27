@@ -1,11 +1,8 @@
-extern crate pcap;
 #[macro_use]
 extern crate lazy_static;
-extern crate linux_api;
-extern crate pnet_packet;
-extern crate rayon;
-extern crate regex;
-extern crate string_error;
+
+use regex;
+use string_error;
 
 use std::collections::HashMap;
 use std::env;
@@ -13,7 +10,6 @@ use std::error::Error;
 use std::rc::Rc;
 
 use linux_api::time::timeval;
-
 
 use pcap::{Capture, Offline};
 use rayon::prelude::*;
@@ -27,7 +23,7 @@ use pnet_packet::{ethernet, ipv4, tcp, FromPacket, Packet};
 
 mod parse_pcap;
 
-use self::parse_pcap::{ParserEntry, Pkts, ThroughputState, InflightState, RTTState};
+use self::parse_pcap::{InflightState, ParserEntry, Pkts, RTTState, ThroughputState};
 
 /// Usage: cargo run '80.*bbr1_bbr1' '../Results/'  ; python3 plot.py . 80.*bbr_bbr_.*.tarta
 
@@ -59,7 +55,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     measure_labels.push("throughput");
     measure_labels.push("inflight");
     measure_labels.push("rtt");
-    
+
     let measure_labels = measure_labels; // take away mut
 
     let parsed_pcaps: Vec<(String, i64, Vec<(u16, Vec<Vec<i64>>)>)> = files
@@ -68,18 +64,18 @@ fn main() -> Result<(), Box<dyn Error>> {
             let stem = Path::new(&file).file_stem().unwrap().to_str().unwrap();
             eprintln!("shortpath: {}", stem);
             let mut cap = open_capture(&file).unwrap();
-            let mut measures: Vec<Box<dyn ParserEntry>> = Vec::new();
+            let mut measures: Vec<Box<dyn ParserEntry<'_>>> = Vec::new();
             for label in measure_labels.iter() {
                 match label.as_ref() {
                     "throughput" => {
                         measures.push(Box::new(ThroughputState::new()));
-                    },
+                    }
                     "inflight" => {
                         measures.push(Box::new(InflightState::new()));
-                    },
+                    }
                     "rtt" => {
                         measures.push(Box::new(RTTState::new()));
-                    },
+                    }
                     _ => {}
                 }
             }
@@ -110,14 +106,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    parsed_pcaps.par_iter().for_each(|(stem, start, flow_map)| {
-        flow_map.into_par_iter().for_each(|(port, flow)| {
-            let output_name = &format!("{}/{}_{}.csv", output_dir, stem, port);
-            write_throughput(output_name, &measure_labels, flow, min_start_time).unwrap();
+    parsed_pcaps
+        .par_iter()
+        .for_each(|(stem, _start, flow_map)| {
+            flow_map.into_par_iter().for_each(|(port, flow)| {
+                let output_name = &format!("{}/{}_{}.csv", output_dir, stem, port);
+                write_throughput(output_name, &measure_labels, flow, min_start_time).unwrap();
+            });
+            let mut file = fs::File::create(format!("{}/start_time.txt", output_dir)).unwrap();
+            file.write_fmt(format_args!("{}\n", min_start_time))
+                .unwrap();
         });
-        let mut file = fs::File::create(format!("{}/start_time.txt", output_dir)).unwrap();
-        file.write_fmt(format_args!("{}\n", min_start_time)).unwrap();
-    });
 
     Ok(())
 }
@@ -130,7 +129,8 @@ fn write_throughput(
 ) -> io::Result<()> {
     let mut file = fs::File::create(filename)?;
     eprintln!("writing to: {}", filename);
-    let header = labels.iter()
+    let header = labels
+        .iter()
         .map(|label| label.to_string())
         .collect::<Vec<String>>()
         .join(",");
@@ -183,7 +183,7 @@ lazy_static! {
 fn calculate_measurements(
     cap: &mut Capture<Offline>,
     granularity: i64,
-    mut measurements: Vec<Box<dyn ParserEntry>>,
+    mut measurements: Vec<Box<dyn ParserEntry<'_>>>,
 ) -> HashMap<u16, Vec<Vec<i64>>> {
     let mut intermediate_t_top: HashMap<u16, i64> = HashMap::new();
     let mut flows_throughput: HashMap<u16, Vec<Vec<i64>>> = HashMap::new();

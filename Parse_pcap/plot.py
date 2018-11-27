@@ -41,7 +41,7 @@ def main():
 
 
 
-    files = []
+    print(f"Searching {dirname} for csv files")
     header = ["time", "throughput", "inflight", "rtt"]
     iheader = dict(map(lambda x: (x[1], x[0] - 1), enumerate(header)))
     fig, axes = plt.subplots(nrows = len(header) - 1, ncols=1)

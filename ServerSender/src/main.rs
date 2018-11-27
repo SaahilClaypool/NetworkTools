@@ -46,11 +46,18 @@ fn client_proc(host: String, port: u32, secs: u64, flows: u32, flow_offset: u64)
             let start = SystemTime::now();
             let buf = [1; 5000];
             while SystemTime::now().duration_since(start).unwrap().as_secs() < secs {
-                let written = client.write(&buf).unwrap();
+                let written = match client.write(&buf) {
+                    Ok(bytes) => bytes, 
+                    Err(_) => 0
+                };
                 if written < 1 {
-                    println!("wrote no bytes");
+                    continue;
                 }
-                client.flush().unwrap();
+
+                match client.flush() {
+                    Ok(()) => {},
+                    Err(_)=> {}
+                }
             }
             eprintln!("Thread finished sending");
             0

@@ -197,9 +197,9 @@ impl<'a> ParserEntry<'a> for RTTState {
             count += 1;
             if pkt.ack_time > pkt.sent_time {
                 let cur_rtt = pkt.ack_time - pkt.sent_time;
-                if cur_rtt > 500 {
-                    // if greater half a second, there is a problem probably
-                    println!(
+                if cur_rtt > 3000 {
+                    // if greater a 3 second, there is a problem probably
+                    debug!(
                         "That's odd... {} {} rtt {}, throwing away",
                         pkt.sent_time, pkt.ack_time, cur_rtt
                     );

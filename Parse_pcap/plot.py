@@ -43,10 +43,15 @@ def main():
 
     print(f"Searching {dirname} for csv files")
     header = ["time", "throughput", "inflight", "rtt"]
+    has_queue = has_router_queue(dirname)
+    if (has_queue):
+        header.append("queue (bytes)")
     iheader = dict(map(lambda x: (x[1], x[0] - 1), enumerate(header)))
-    fig, axes = plt.subplots(nrows = len(header) - 1, ncols=1)
+    fig, axes = plt.subplots(nrows = len(header) - 1, ncols=1, sharex=True)
     for f in listdir(dirname):
-        if (isfile(join(dirname, f)) and r_pattern.search(str(f))):
+        if (isfile(join(dirname, f)) \
+                and r_pattern.search(str(f))
+                and str(f) != "queue_length.csv"):
             cheader = ["inflight", "rtt"]
             if (sender in f):
                 cheader = ["inflight", "rtt"]
@@ -55,20 +60,14 @@ def main():
             plot_one(f, cheader, iheader, fig, axes, expected_points)
             f = join(dirname, f)
             print(f)
-    
+    if (has_queue):
+        plot_queue("queue_length.csv", fig, axes, -1)
+
     for idx, h in enumerate(header[1:]):
         axes[idx].set_ylabel(h)
-        print("setting label to ", h)
     axes[-1].set_xlabel("time (seconds)")
-    fig.suptitle(name)
-    # plt.ylabel("throughput (mbps)")
-    # if (len(sys.argv) > 5):
-    #     plt.ylabel(sys.argv[5])
-    # plt.xlabel("time (s)")
-    # if (len(sys.argv) > 6):
-    #     plt.xlabel(sys.argv[6])
-    # plt.title(name)
-    # plt.ylim(ymin=0)
+    fig.suptitle(name.replace(".png", ""), fontsize=16)
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
     fig.savefig(name, dpi='figure')
     if (should_show):
         plt.show()
@@ -78,7 +77,7 @@ def plot_one(filename, header, plot_indexs, fig, plots, expected_points):
     outputs = {}
     for h in header:
         outputs[h] = []
-    
+
     with open(filename, 'r') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
@@ -93,6 +92,33 @@ def plot_one(filename, header, plot_indexs, fig, plots, expected_points):
             o = o[:last]
             t = time[:last]
             plots[plot_indexs[h]].plot(t, o)
+
+def plot_queue(filename, fig, plots, idx):
+    x = []
+    y = []
+    # there should be a start_time.txt file in the results
+    start_time = 0
+    if (isfile("start_time.txt")):
+        start_time = int(open("start_time.txt", 'r').read().strip())
+        print("start time: ", start_time)
+    with open(filename, 'r') as csvfile:
+        for line in csvfile:
+            t, v = line.split(",")
+            t = (float(t) * 1000 - start_time) / 1000
+            v = v.strip()
+            v = int(v)
+            x.append(t)
+            y.append(v)
+
+    last = int(len(x) * percent_shown)
+    print("x[0]", x[0])
+    plots[idx].plot(x[:last], y[:last])
+
+def has_router_queue(dirname, filename="queue_length.csv"):
+    for f in listdir(dirname):
+        if (isfile(join(dirname, f)) and filename == str(f)):
+            return True
+    return False
 
 if __name__ == '__main__':
     main()

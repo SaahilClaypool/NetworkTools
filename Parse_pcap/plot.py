@@ -42,10 +42,12 @@ def main():
 
 
     print(f"Searching {dirname} for csv files")
+    header_labels = ["time\n(seconds)", "throughput\n(mbit / second)", "inflight\n(bytes)", "rtt\n(ms)"]
     header = ["time", "throughput", "inflight", "rtt"]
     has_queue = has_router_queue(dirname)
     if (has_queue):
         header.append("queue (bytes)")
+        header_labels.append("queue\n(bytes)")
     iheader = dict(map(lambda x: (x[1], x[0] - 1), enumerate(header)))
     fig, axes = plt.subplots(nrows = len(header) - 1, ncols=1, sharex=True)
     for f in listdir(dirname):
@@ -63,8 +65,9 @@ def main():
     if (has_queue):
         plot_queue("queue_length.csv", fig, axes, -1)
 
-    for idx, h in enumerate(header[1:]):
+    for idx, h in enumerate(header_labels[1:]):
         axes[idx].set_ylabel(h)
+        axes[idx].legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
     axes[-1].set_xlabel("time (seconds)")
     fig.suptitle(name.replace(".png", ""), fontsize=16)
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
@@ -91,7 +94,7 @@ def plot_one(filename, header, plot_indexs, fig, plots, expected_points):
             last = int(len(o) * percent_shown)
             o = o[:last]
             t = time[:last]
-            plots[plot_indexs[h]].plot(t, o)
+            plots[plot_indexs[h]].plot(t, o, label=clean_name(filename))
 
 def plot_queue(filename, fig, plots, idx):
     x = []
@@ -112,13 +115,23 @@ def plot_queue(filename, fig, plots, idx):
 
     last = int(len(x) * percent_shown)
     print("x[0]", x[0])
-    plots[idx].plot(x[:last], y[:last])
+    plots[idx].plot(x[:last], y[:last], label="queue\nlength")
 
 def has_router_queue(dirname, filename="queue_length.csv"):
     for f in listdir(dirname):
         if (isfile(join(dirname, f)) and filename == str(f)):
             return True
     return False
+
+def clean_name(filename):
+    # all files are prot_pi@bah_port.csv
+    print("matching", filename)
+    r_pattern = re.compile(r"(?P<prot>.*)_pi@.*_(?P<port>[0-9]*).csv")
+    search = r_pattern.search(filename)
+    protocol = search['prot']
+    port = search['port']
+    return f"{protocol}"
+
 
 if __name__ == '__main__':
     main()

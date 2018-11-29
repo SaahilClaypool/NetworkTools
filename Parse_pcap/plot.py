@@ -50,10 +50,12 @@ def main():
         header_labels.append("queue\n(bytes)")
     iheader = dict(map(lambda x: (x[1], x[0] - 1), enumerate(header)))
     fig, axes = plt.subplots(nrows = len(header) - 1, ncols=1, sharex=True)
+    all_files = []
     for f in listdir(dirname):
         if (isfile(join(dirname, f)) \
                 and r_pattern.search(str(f))
                 and str(f) != "queue_length.csv"):
+            all_files.append(f)
             cheader = ["inflight", "rtt"]
             if (sender in f):
                 cheader = ["inflight", "rtt"]
@@ -65,13 +67,17 @@ def main():
     if (has_queue):
         plot_queue("queue_length.csv", fig, axes, -1)
 
+    plot_throughput(all_files, fig, axes, 0)
     for idx, h in enumerate(header_labels[1:]):
         axes[idx].set_ylabel(h)
         axes[idx].legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
     axes[-1].set_xlabel("time (seconds)")
+    # axes[-1].set_xlim(0, 45)
     fig.suptitle(name.replace(".png", ""), fontsize=16)
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
-    fig.savefig(name, dpi='figure')
+    # fig.savefig(name, dpi='figure')
+    fig.set_size_inches(9.5, 5.5)
+    fig.savefig(name, dpi=500)
     if (should_show):
         plt.show()
 
@@ -114,7 +120,6 @@ def plot_queue(filename, fig, plots, idx):
             y.append(v)
 
     last = int(len(x) * percent_shown)
-    print("x[0]", x[0])
     plots[idx].plot(x[:last], y[:last], label="queue\nlength")
 
 def has_router_queue(dirname, filename="queue_length.csv"):
@@ -132,6 +137,49 @@ def clean_name(filename):
     port = search['port']
     return f"{protocol}"
 
+def plot_throughput(files, fig, plots, idx):
+    all_tps = [] # list of (times, tps)
+    for filename in files:
+        if (sender in filename):
+            times, tps = [], []
+            with open(filename, 'r') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                     t = float(row["time"]) / 1000
+                     tp = float(row["throughput"])
+                     times.append(t)
+                     tps.append(tp)
+                expected_points = 50
+                if (len(times) > expected_points):
+                    all_tps.append((times, tps))
+    all_tps.sort(key=lambda tps: tps[0][0])
+    time_buckets = []
+    val_buckets = []
+    for t, v in zip(all_tps[0][0], all_tps[0][1]):
+        time_buckets.append(t)
+        val_buckets.append(v)
+    for ts, tps in all_tps[1:]:
+        for t, tp in zip(ts, tps):
+            if (t > time_buckets[-1]):
+                break
+            closest_index = closest_time(t, time_buckets)
+            val_buckets[closest_index] += tp
+    last = int(len(time_buckets) * percent_shown)
+    plots[idx].plot(time_buckets[:last], val_buckets[:last], label="total\nthroughput")
+
+def closest_time(time, times):
+    """return index of the closest"""
+    min_dist = 1000
+    min_dist_i = 0
+    for i, t in enumerate(times):
+        dist = abs(time - t)
+        if (dist < min_dist):
+            min_dist = dist
+            min_dist_i = i
+        if t > time:
+            break
+    print(f"min dist: {min_dist} {times[min_dist_i]} {time}")
+    return min_dist_i
 
 if __name__ == '__main__':
     main()

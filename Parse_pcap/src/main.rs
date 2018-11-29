@@ -49,10 +49,22 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else {
         for (i, arg) in env::args().enumerate() {
             match i {
-                1 => reg_string = format!(".*{}.*.pcap$", arg),
-                2 => dir = arg,
-                3 => output_dir = arg,
-                4 => granularity = arg.parse::<i64>()?,
+                1 => {
+                    println!("reg string = {}", arg);
+                    reg_string = format!(".*{}.*.pcap$", arg);
+                },
+                2 => {
+                    println!("dir string = {}", arg);
+                    dir = arg;
+                },
+                3 => {
+                    println!("output string = {}", arg);
+                    output_dir = arg;
+                },
+                4 => {
+                    println!("gran string = {}", arg);
+                    granularity = arg.parse::<i64>()?;
+                }
                 _ => eprintln!("arg {} is {}", i, arg),
             }
         }

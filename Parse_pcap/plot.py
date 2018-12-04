@@ -82,6 +82,7 @@ def main():
         plt.show()
 
 def plot_one(filename, header, plot_indexs, fig, plots, expected_points):
+    print(f"plotting one filename is {filename}")
     time = []
     outputs = {}
     for h in header:
@@ -130,12 +131,13 @@ def has_router_queue(dirname, filename="queue_length.csv"):
 
 def clean_name(filename):
     # all files are prot_pi@bah_port.csv
-    print("matching", filename)
-    r_pattern = re.compile(r"(?P<prot>.*)_pi@.*_(?P<port>[0-9]*).csv")
+    r_pattern = re.compile(r"(?P<prot>.*)_(?P<type>.*)@.*_(?P<port>[0-9]*).csv")
     search = r_pattern.search(filename)
     protocol = search['prot']
     port = search['port']
-    return f"{protocol}"
+    cleanname = f"{protocol}-{search['type']}"
+    print("matching", filename, "as", cleanname)
+    return cleanname
 
 def plot_throughput(files, fig, plots, idx):
     all_tps = [] # list of (times, tps)
@@ -178,7 +180,6 @@ def closest_time(time, times):
             min_dist_i = i
         if t > time:
             break
-    print(f"min dist: {min_dist} {times[min_dist_i]} {time}")
     return min_dist_i
 
 if __name__ == '__main__':

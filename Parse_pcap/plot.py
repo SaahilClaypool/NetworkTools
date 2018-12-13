@@ -48,9 +48,19 @@ def main():
     if (has_queue):
         header.append("queue (bytes)")
         header_labels.append("queue\n(bytes)")
+    # Map the header name to the header index
     iheader = dict(map(lambda x: (x[1], x[0] - 1), enumerate(header)))
+    # create a figure and axes to SHARE
     fig, axes = plt.subplots(nrows = len(header) - 1, ncols=1, sharex=True)
+    # create a map of header: subfigure and axes (ex. "throughput" : (fig, axes))
+    sub_figs = {}
+    for h in header[1:]:
+        sub_header = [h]
+        sub_fig, sub_axes = plt.subplots(nrows=len(sub_header), ncols=1, sharex=True)
+        sub_figs[h] = (sub_fig, sub_axes)
+
     all_files = []
+    labels = []
     for f in listdir(dirname):
         if (isfile(join(dirname, f)) \
                 and r_pattern.search(str(f))
@@ -61,33 +71,62 @@ def main():
                 cheader = ["inflight", "rtt"]
             else:
                 cheader = ["throughput"]
-            plot_one(f, cheader, iheader, fig, axes, expected_points)
+            label = plot_one(f, cheader, iheader, fig, axes, expected_points, sub_figs)
+            labels.append(label)
             f = join(dirname, f)
             print(f)
     if (has_queue):
-        plot_queue("queue_length.csv", fig, axes, -1)
+        plot_queue("queue_length.csv", fig, axes, -1, sub_figs)
 
+    set_titles(all_files, fig, axes, header_labels, name, sub_figs, labels)
+
+def fix_axis(axis, label, legend_labels):
+    axis.set_ylim(bottom=0)
+    axis.set_ylabel(label)
+    axis.legend(legend_labels, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+    # axis.legend(loc="upper right", fontsize="x-small", labelspacing=.01)
+
+
+def set_titles(all_files, fig, axes, header_labels, name, sub_figs, labels):
+    print(f"labels are {labels}")
     plot_throughput(all_files, fig, axes, 0)
     for idx, h in enumerate(header_labels[1:]):
-        axes[idx].set_ylabel(h)
-        axes[idx].legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+        fix_axis(axes[idx], h, labels)
     axes[-1].set_xlabel("time (seconds)")
     # axes[-1].set_xlim(0, 45)
-    fig.suptitle(name.replace(".png", ""), fontsize=16)
-    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
-    # fig.savefig(name, dpi='figure')
+    fig.suptitle(name.replace(".png", "").replace(".svg", ""), fontsize=16)
+    try:
+        fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+    except:
+        pass
+    fig.savefig(name, dpi='figure')
     fig.set_size_inches(9.5, 5.5)
-    fig.savefig(name, dpi=500)
+    for (idx, (sub_header, (sub_fig, sub_plot))) in enumerate(sub_figs.items()):
+        label = header_labels[idx + 1]
+        fix_axis(sub_plot, label, labels)
+        ext = name[-4:]
+        sub_name = name.replace(".png", "").replace(".svg", "") + "_" + sub_header
+        sub_fig.suptitle(sub_name.replace("_", " "))
+        sub_fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+        sub_fig.set_size_inches(9.5, 5.5)
+        sub_fig.savefig((sub_name + ext).replace(" ", "_"), dpi=500)
+        sub_plot.set_xlabel("time (seconds)")
     if (should_show):
         plt.show()
 
-def plot_one(filename, header, plot_indexs, fig, plots, expected_points):
+plot_num = 0
+def plot_one(filename, header, plot_indexs, fig, plots, expected_points, sub_figs):
+    global plot_num
+    plot_num = plot_num + 1
+    print(f"plotting n = {plot_num}")
     print(f"plotting one filename is {filename}")
     time = []
     outputs = {}
     for h in header:
         outputs[h] = []
 
+    line, sub_line = None, None
+    label = clean_name(filename)
     with open(filename, 'r') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
@@ -101,9 +140,12 @@ def plot_one(filename, header, plot_indexs, fig, plots, expected_points):
             last = int(len(o) * percent_shown)
             o = o[:last]
             t = time[:last]
-            plots[plot_indexs[h]].plot(t, o, label=clean_name(filename))
+            line = plots[plot_indexs[h]].plot(t, o, label=label)
+            sub_fig, sub_plot = sub_figs[h]
+            sub_plot.plot(t, o, label=label)
+    return label
 
-def plot_queue(filename, fig, plots, idx):
+def plot_queue(filename, fig, plots, idx, sub_figs):
     x = []
     y = []
     # there should be a start_time.txt file in the results
@@ -122,6 +164,8 @@ def plot_queue(filename, fig, plots, idx):
 
     last = int(len(x) * percent_shown)
     plots[idx].plot(x[:last], y[:last], label="queue\nlength")
+    sub_fig, sub_plot = [i for i in sub_figs.items()][-1][1]
+    sub_plot.plot(x[:last], y[:last], label="queue\nlength")
 
 def has_router_queue(dirname, filename="queue_length.csv"):
     for f in listdir(dirname):
@@ -167,7 +211,7 @@ def plot_throughput(files, fig, plots, idx):
             closest_index = closest_time(t, time_buckets)
             val_buckets[closest_index] += tp
     last = int(len(time_buckets) * percent_shown)
-    plots[idx].plot(time_buckets[:last], val_buckets[:last], label="total\nthroughput")
+    # plots[idx].plot(time_buckets[:last], val_buckets[:last], label="total\nthroughput")
 
 def closest_time(time, times):
     """return index of the closest"""

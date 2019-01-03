@@ -83,7 +83,8 @@ def main():
 def fix_axis(axis, label, legend_labels):
     axis.set_ylim(bottom=0)
     axis.set_ylabel(label)
-    axis.legend(legend_labels, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+    # axis.legend(legend_labels, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+    axis.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
     # axis.legend(loc="upper right", fontsize="x-small", labelspacing=.01)
 
 

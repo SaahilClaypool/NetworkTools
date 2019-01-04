@@ -156,7 +156,13 @@ def plot_queue(filename, fig, plots, idx, sub_figs):
         print("start time: ", start_time)
     with open(filename, 'r') as csvfile:
         for line in csvfile:
-            t, v = line.split(",")
+            parts = list(line.split(","))
+            t = parts[0]
+            v = parts[1]
+            try:
+                float(t)
+            except ValueError:
+                continue
             t = (float(t) * 1000 - start_time) / 1000
             v = v.strip()
             v = int(v)

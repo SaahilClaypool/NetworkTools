@@ -48,6 +48,8 @@ def main():
     if (has_queue):
         header.append("queue (bytes)")
         header_labels.append("queue\n(bytes)")
+        header.append("droprate")
+        header_labels.append("droprate")
     # Map the header name to the header index
     iheader = dict(map(lambda x: (x[1], x[0] - 1), enumerate(header)))
     # create a figure and axes to SHARE
@@ -76,7 +78,8 @@ def main():
             f = join(dirname, f)
             print(f)
     if (has_queue):
-        plot_queue("queue_length.csv", fig, axes, -1, sub_figs)
+        plot_queue("queue_length.csv", fig, axes, -2, sub_figs)
+        plot_droprate("queue_length.csv", fig, axes, -1, sub_figs)
 
     set_titles(all_files, fig, axes, header_labels, name, sub_figs, labels)
 
@@ -158,21 +161,65 @@ def plot_queue(filename, fig, plots, idx, sub_figs):
         for line in csvfile:
             parts = list(line.split(","))
             t = parts[0]
-            v = parts[1]
+            queue_length_bytes = parts[1]
             try:
                 float(t)
             except ValueError:
                 continue
             t = (float(t) * 1000 - start_time) / 1000
-            v = v.strip()
-            v = int(v)
+            queue_length_bytes = queue_length_bytes.strip()
+            queue_length_bytes = int(queue_length_bytes)
             x.append(t)
-            y.append(v)
+            y.append(queue_length_bytes)
 
     last = int(len(x) * percent_shown)
     plots[idx].plot(x[:last], y[:last], label="queue\nlength")
-    sub_fig, sub_plot = [i for i in sub_figs.items()][-1][1]
+    # the sub_figs are a dictionary of title : sub_fig, sub_plot
+    sub_fig, sub_plot = [i for i in sub_figs.items()][idx][1]
     sub_plot.plot(x[:last], y[:last], label="queue\nlength")
+
+
+def plot_droprate(filename, fig, plots, idx, sub_figs):
+    """
+    Plot the drop rate for each rtt window.
+    """
+    x = []
+    y = []
+    # there should be a start_time.txt file in the results
+    start_time = 0
+    if (isfile("start_time.txt")):
+        start_time = int(open("start_time.txt", 'r').read().strip())
+        print("start time: ", start_time)
+
+    p_sent, p_dropped = 0, 0
+    with open(filename, 'r') as csvfile:
+        for line in csvfile:
+            parts = list(line.split(","))
+            t = parts[0]
+            sent = parts[2]
+            dropped = parts[3]
+            try:
+                float(t)
+            except ValueError:
+                continue
+            t = (float(t) * 1000 - start_time) / 1000
+            sent = sent.strip()
+            sent = int(sent)
+            dropped = dropped.strip()
+            dropped = int(dropped)
+
+            drop_rate = 0
+            if p_sent > 0 and sent != p_sent:
+                drop_rate = (dropped - p_dropped) / (sent - p_sent)
+            x.append(t)
+            y.append(drop_rate * 100)
+
+            p_sent, p_dropped = sent, dropped
+
+    last = int(len(x) * percent_shown)
+    plots[idx].plot(x[:last], y[:last], label=f"droprate\n percent per 500 ms")
+    sub_fig, sub_plot = [i for i in sub_figs.items()][idx][1]
+    sub_plot.plot(x[:last], y[:last], label="drop_rate")
 
 def has_router_queue(dirname, filename="queue_length.csv"):
     for f in listdir(dirname):

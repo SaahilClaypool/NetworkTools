@@ -1,0 +1,168 @@
+{
+    "name": "",
+    "time": 60,
+    "setup": {
+        "local": {
+            "cc": "bbrshallow",
+            "commands": [
+                "sudo sh tbf.sh"
+            ]
+        },
+        "pi@churro1": {
+            "cc": "bbrshallow",
+            "commands": [
+                "sudo tcpdump 'tcp port 5201' -w pcap.pcap -s 96 &"
+            ]
+        },
+        "pi@churro2": {
+            "cc": "bbrshallow",
+            "commands": [
+                "sudo tcpdump 'tcp port 5201' -w pcap.pcap -s 96 &"
+            ]
+        },
+        "pi@churro3": {
+            "cc": "bbrshallow",
+            "commands": [
+                "sudo tcpdump 'tcp port 5201' -w pcap.pcap -s 96 &"
+            ]
+        },
+        "pi@churro4": {
+            "cc": "bbrshallow",
+            "commands": [
+                "sudo tcpdump 'tcp port 5201' -w pcap.pcap -s 96 &"
+            ]
+        },
+        "pi@tarta1": {
+            "cc": "bbrshallow",
+            "commands": [
+                "./ServerSender server 0.0.0.0 &",
+                "sudo tcpdump 'tcp port 5201' -w pcap.pcap -s 96 &"
+            ]
+        },
+        "pi@tarta2": {
+            "cc": "bbrshallow",
+            "commands": [
+                "./ServerSender server 0.0.0.0 &",
+                "sudo tcpdump 'tcp port 5201' -w pcap.pcap -s 96 &"
+            ]
+        },
+        "pi@tarta3": {
+            "cc": "bbrshallow",
+            "commands": [
+                "./ServerSender server 0.0.0.0 &",
+                "sudo tcpdump 'tcp port 5201' -w pcap.pcap -s 96 &"
+            ]
+        },
+        "pi@tarta4": {
+            "cc": "bbrshallow",
+            "commands": [
+                "./ServerSender server 0.0.0.0 &",
+                "sudo tcpdump 'tcp port 5201' -w pcap.pcap -s 96 &"
+            ]
+        }
+    },
+    "run": {
+        "local": {
+            "commands": [
+            ]
+        },
+
+        "pi@churro1": {
+            "commands": [
+                "./ServerSender client tarta1 5201 {T} 1 1 &"
+            ]
+        },
+        "pi@churro2": {
+            "commands": [
+                "sleep 2; ./ServerSender client tarta2 5201 {T} 1 1 &"
+            ]
+        },
+        "pi@churro3": {
+            "commands": [
+            ]
+        },
+        "pi@churro4": {
+            "commands": [
+            ]
+        },
+        "pi@tarta1": {
+            "commands": [
+            ]
+        },
+        "pi@tarta2": {
+            "commands": [
+            ]
+        },
+        "pi@tarta3": {
+            "commands": [
+            ]
+        },
+        "pi@tarta4": {
+            "commands": [
+            ]
+        }
+    }, 
+    "finish": {
+        "local": {
+            "commands": [
+                "sudo tc -s qdisc ls dev enp3s0"
+            ]
+        },
+        "pi@churro1": {
+            "commands": [
+                "sudo killall iperf3",
+                "sudo killall ServerSender",
+                "sudo killall tcpdump"
+            ]
+        },
+        "pi@churro2": {
+            "commands": [
+                "sudo killall iperf3",
+                "sudo killall ServerSender",
+                "sudo killall tcpdump"
+            ]
+        },
+        "pi@churro3": {
+            "commands": [
+                "sudo killall iperf3",
+                "sudo killall ServerSender",
+                "sudo killall tcpdump"
+            ]
+        },
+        "pi@churro4": {
+            "commands": [
+                "sudo killall iperf3",
+                "sudo killall ServerSender",
+                "sudo killall tcpdump"
+            ]
+        },
+        "pi@tarta1": {
+            "commands": [
+                "sudo killall iperf3",
+                "sudo killall ServerSender",
+                "sudo killall tcpdump"
+            ]
+        },
+        "pi@tarta2": {
+            "commands": [
+                "sudo killall iperf3",
+                "sudo killall ServerSender",
+                "sudo killall tcpdump"
+            ]
+        },
+        "pi@tarta3": {
+            "commands": [
+                "sudo killall iperf3",
+                "sudo killall ServerSender",
+                "sudo killall tcpdump"
+            ]
+        },
+        "pi@tarta4": {
+            "commands": [
+                "sudo killall iperf3",
+                "sudo killall ServerSender",
+                "sudo killall tcpdump"
+            ]
+        }
+    }
+}

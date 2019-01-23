@@ -7,10 +7,9 @@ CUR_DIR = os.getcwd()
 TOOLS_DIR = f"/home/saahil/raspberry/rpi/NetworkTools"
 PARSE_PCAP = f"{TOOLS_DIR}/Parse_pcap/target/release/parse_pcap"
 PLOT_PCAP = f"{TOOLS_DIR}/Parse_pcap/plot.py"
-EXP_DIR = "/home/saahil/raspberry/rpi/Experiments"
 
-START_TRIAL = f"{EXP_DIR}/start_trial.py"
-RECORD_LOCAL = f"{EXP_DIR}/record_local.py"
+START_TRIAL = f"{TOOLS_DIR}/Trials/start_trial.py"
+RECORD_LOCAL = f"{TOOLS_DIR}/Trials/record_local.py"
 
 
 

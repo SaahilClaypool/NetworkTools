@@ -42,7 +42,7 @@ def main():
 
 
     print(f"Searching {dirname} for csv files")
-    header_labels = ["time\n(seconds)", "throughput\n(mbit / second)", "inflight\n(bytes)", "rtt\n(ms)"]
+    header_labels = ["Time\n(sec.)", "Throughput (Mbps)", "inflight\n(bytes)", "rtt\n(ms)"]
     header = ["time", "throughput", "inflight", "rtt"]
     has_queue = has_router_queue(dirname)
     if (has_queue):
@@ -79,7 +79,7 @@ def main():
             print(f)
     if (has_queue):
         plot_queue("queue_length.csv", fig, axes, -2, sub_figs)
-        plot_droprate("queue_length.csv", fig, axes, -1, sub_figs)
+        # plot_droprate("queue_length.csv", fig, axes, -1, sub_figs)
 
     set_titles(all_files, fig, axes, header_labels, name, sub_figs, labels)
 
@@ -87,7 +87,7 @@ def fix_axis(axis, label, legend_labels):
     axis.set_ylim(bottom=0)
     axis.set_ylabel(label)
     # axis.legend(legend_labels, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
-    axis.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+    # axis.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
     # axis.legend(loc="upper right", fontsize="x-small", labelspacing=.01)
 
 
@@ -96,7 +96,7 @@ def set_titles(all_files, fig, axes, header_labels, name, sub_figs, labels):
     plot_throughput(all_files, fig, axes, 0)
     for idx, h in enumerate(header_labels[1:]):
         fix_axis(axes[idx], h, labels)
-    axes[-1].set_xlabel("time (seconds)")
+    axes[-1].set_xlabel("Time (sec.)")
     # axes[-1].set_xlim(0, 45)
     fig.suptitle(name.replace(".png", "").replace(".svg", ""), fontsize=16)
     try:
@@ -110,11 +110,11 @@ def set_titles(all_files, fig, axes, header_labels, name, sub_figs, labels):
         fix_axis(sub_plot, label, labels)
         ext = name[-4:]
         sub_name = name.replace(".png", "").replace(".svg", "") + "_" + sub_header
-        sub_fig.suptitle(sub_name.replace("_", " "))
+        # sub_fig.suptitle(sub_name.replace("_", " "))
         sub_fig.tight_layout(rect=[0, 0.03, 1, 0.95])
         sub_fig.set_size_inches(9.5, 5.5)
         sub_fig.savefig((sub_name + ext).replace(" ", "_"), dpi=500)
-        sub_plot.set_xlabel("time (seconds)")
+        sub_plot.set_xlabel("Time (sec.)")
     if (should_show):
         plt.show()
 
@@ -147,6 +147,7 @@ def plot_one(filename, header, plot_indexs, fig, plots, expected_points, sub_fig
             line = plots[plot_indexs[h]].plot(t, o, label=label)
             sub_fig, sub_plot = sub_figs[h]
             sub_plot.plot(t, o, label=label)
+            sub_plot.hlines(y=20, xmin=0, xmax=60, colors='gray')
     return label
 
 def plot_queue(filename, fig, plots, idx, sub_figs):
@@ -265,6 +266,7 @@ def plot_throughput(files, fig, plots, idx):
             closest_index = closest_time(t, time_buckets)
             val_buckets[closest_index] += tp
     last = int(len(time_buckets) * percent_shown)
+    plt.hlines(20, xmin=0, xmax=50, colors='gray', label="fair share")
     # plots[idx].plot(time_buckets[:last], val_buckets[:last], label="total\nthroughput")
 
 def closest_time(time, times):

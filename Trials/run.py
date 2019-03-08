@@ -4,7 +4,7 @@ import argparse
 import time
 
 CUR_DIR = os.getcwd()
-TOOLS_DIR = f"/home/saahil/raspberry/rpi/NetworkTools"
+TOOLS_DIR = f"/home/saahil/Documents/rpi/NetworkTools"
 PARSE_PCAP = f"{TOOLS_DIR}/Parse_pcap/target/release/parse_pcap"
 PLOT_PCAP = f"{TOOLS_DIR}/Parse_pcap/plot.py"
 

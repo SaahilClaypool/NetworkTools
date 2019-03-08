@@ -42,7 +42,7 @@ def main():
 
 
     print(f"Searching {dirname} for csv files")
-    header_labels = ["Time\n(sec.)", "Throughput (Mbps)", "inflight\n(bytes)", "rtt\n(ms)"]
+    header_labels = ["Time\n(sec.)", "Throughput (Mbps)", "Inflight (Kb)", "rtt\n(ms)"]
     header = ["time", "throughput", "inflight", "rtt"]
     has_queue = has_router_queue(dirname)
     if (has_queue):
@@ -134,9 +134,9 @@ def plot_one(filename, header, plot_indexs, fig, plots, expected_points, sub_fig
     with open(filename, 'r') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
-            time.append(float(row["time"]) / 1000)
+            time.append(float(row["time"]) / 1000 - 5)
             for idx, h in enumerate(header):
-                outputs[h].append(float(row[h]))
+                outputs[h].append(float(row[h]) / 1000)
         if (len(time) < expected_points):
             return
         for h in header:
@@ -147,7 +147,7 @@ def plot_one(filename, header, plot_indexs, fig, plots, expected_points, sub_fig
             line = plots[plot_indexs[h]].plot(t, o, label=label)
             sub_fig, sub_plot = sub_figs[h]
             sub_plot.plot(t, o, label=label)
-            sub_plot.hlines(y=20, xmin=0, xmax=60, colors='gray')
+            # sub_plot.hlines(y=20, xmin=0, xmax=60, colors='gray')
     return label
 
 def plot_queue(filename, fig, plots, idx, sub_figs):
